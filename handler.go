@@ -29,13 +29,13 @@ func newPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Missing amount")
 		return
 	}
-	id, err := newPaymentRequest(v.Account, &v.Amount.Int)
+	payment, err := newPaymentRequest(v.Account, &v.Amount.Int)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
 		return
 	}
-	if err := json.NewEncoder(w).Encode(map[string]string{"id": id}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]string{"id": payment.id}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
 		return
@@ -53,7 +53,7 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "Missing payment id")
 		return
 	}
-	account, amount, hash, err := getPaymentRequest(id[0])
+	payment, err := getPaymentRequest(id[0])
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
@@ -64,18 +64,18 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, err)
 		return
 	}
-	hash2, err := validateBlock(&block, account, amount)
+	hash, err := validateBlock(&block, payment.account, payment.amount.Raw)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, err)
 		return
 	}
-	if hash != nil && !bytes.Equal(hash, hash2) {
+	if payment.hash != nil && !bytes.Equal(hash, payment.hash) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Block for this payment id has already been submitted")
 		return
 	}
-	if err = updatePaymentRequest(id[0], hash2); err != nil {
+	if err = updatePaymentRequest(payment.id, hash); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
 		return

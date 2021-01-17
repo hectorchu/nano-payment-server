@@ -14,7 +14,7 @@ var (
 
 func main() {
 	flag.Parse()
-	http.HandleFunc("/newpayment", newPaymentHandler)
+	http.HandleFunc("/new_payment", newPaymentHandler)
 	http.HandleFunc("/payment", paymentHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

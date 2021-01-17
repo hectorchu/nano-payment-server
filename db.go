@@ -7,9 +7,17 @@ import (
 	"math/big"
 
 	"github.com/hectorchu/gonano/rpc"
+	"github.com/hectorchu/gonano/util"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/xid"
 )
+
+type paymentRecord struct {
+	id      string
+	account string
+	amount  util.NanoAmount
+	hash    rpc.BlockHash
+}
 
 func withDB(cb func(*sql.DB) error) (err error) {
 	db, err := sql.Open("sqlite3", "./data.db")
@@ -20,8 +28,12 @@ func withDB(cb func(*sql.DB) error) (err error) {
 	return cb(db)
 }
 
-func newPaymentRequest(account string, amount *big.Int) (id string, err error) {
-	id = xid.New().String()
+func newPaymentRequest(account string, amount *big.Int) (payment *paymentRecord, err error) {
+	payment = &paymentRecord{
+		id:      xid.New().String(),
+		account: account,
+		amount:  util.NanoAmount{Raw: amount},
+	}
 	err = withDB(func(db *sql.DB) (err error) {
 		tx, err := db.Begin()
 		if err != nil {
@@ -36,7 +48,7 @@ func newPaymentRequest(account string, amount *big.Int) (id string, err error) {
 		}
 		if _, err = tx.Exec(`
 			INSERT INTO payments (id, account, amount, block_hash) VALUES (?,?,?,?)
-		`, id, account, amount.String(), ""); err != nil {
+		`, payment.id, account, amount.String(), ""); err != nil {
 			tx.Rollback()
 			return
 		}
@@ -45,20 +57,21 @@ func newPaymentRequest(account string, amount *big.Int) (id string, err error) {
 	return
 }
 
-func getPaymentRequest(id string) (account string, amount *big.Int, hash rpc.BlockHash, err error) {
+func getPaymentRequest(id string) (payment *paymentRecord, err error) {
 	err = withDB(func(db *sql.DB) (err error) {
-		var amountStr, hashStr string
+		var account, amount, hash string
 		if err = db.QueryRow(`
 			SELECT account, amount, block_hash FROM payments WHERE id = ?
-		`, id).Scan(&account, &amountStr, &hashStr); err != nil {
+		`, id).Scan(&account, &amount, &hash); err != nil {
 			return
 		}
+		payment = &paymentRecord{id: id, account: account}
 		var ok bool
-		if amount, ok = new(big.Int).SetString(amountStr, 10); !ok {
+		if payment.amount.Raw, ok = new(big.Int).SetString(amount, 10); !ok {
 			return errors.New("Could not decode amount")
 		}
-		if hashStr != "" {
-			if hash, err = hex.DecodeString(hashStr); err != nil {
+		if hash != "" {
+			if payment.hash, err = hex.DecodeString(hash); err != nil {
 				return
 			}
 		}
