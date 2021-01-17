@@ -61,11 +61,7 @@ func sendBlock(block *rpc.Block) (err error) {
 	if err != nil {
 		return
 	}
-	_, difficulty, _, _, _, _, err := rpcClient.ActiveDifficulty()
-	if err != nil {
-		return
-	}
-	if block.Work, err = pow.Generate(block.Previous, difficulty); err != nil {
+	if err = generatePoW(block); err != nil {
 		return
 	}
 	if err = wsClient.Connect(); err != nil {
@@ -89,4 +85,19 @@ func sendBlock(block *rpc.Block) (err error) {
 			return errors.New("Timed out")
 		}
 	}
+}
+
+func generatePoW(block *rpc.Block) (err error) {
+	client := rpc.Client{URL: *rpcURL}
+	_, difficulty, _, _, _, _, err := client.ActiveDifficulty()
+	if err != nil {
+		return
+	}
+	if *powURL != "" {
+		client.URL = *powURL
+		block.Work, _, _, err = client.WorkGenerate(block.Previous, difficulty)
+	} else {
+		block.Work, err = pow.Generate(block.Previous, difficulty)
+	}
+	return
 }
