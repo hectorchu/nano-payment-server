@@ -13,6 +13,8 @@ Usage
 
     -cb string
           Callback URL when payment is fulfilled
+    -p int
+          Listen port (default 8080)
     -pow string
           RPC Proof-of-Work URL
     -rpc string
