@@ -43,11 +43,7 @@ func newPaymentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func paymentHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		params = r.URL.Query()
-		block  rpc.Block
-	)
-	id, ok := params["id"]
+	id, ok := r.URL.Query()["id"]
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, "Missing payment id")
@@ -59,6 +55,7 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, err)
 		return
 	}
+	var block rpc.Block
 	if err = json.NewDecoder(r.Body).Decode(&block); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintln(w, err)
@@ -84,5 +81,14 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintln(w, err)
 		return
+	}
+	if *callbackURL != "" {
+		resp, err := http.Get(*callbackURL + "?id=" + payment.id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintln(w, err)
+			return
+		}
+		resp.Body.Close()
 	}
 }
