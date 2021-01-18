@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/hectorchu/gonano/rpc"
@@ -85,15 +86,19 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	var buf bytes.Buffer
+	if err = json.NewEncoder(&buf).Encode(map[string]string{
+		"id":         payment.id,
+		"block_hash": hash.String(),
+	}); err != nil {
+		serverError(w, err)
+		return
+	}
+	if _, err = io.Copy(w, &buf); err != nil {
+		serverError(w, err)
+		return
+	}
 	if *callbackURL != "" {
-		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(map[string]string{
-			"id":         payment.id,
-			"block_hash": hash.String(),
-		}); err != nil {
-			serverError(w, err)
-			return
-		}
 		resp, err := http.Post(*callbackURL, "application/json", &buf)
 		if err != nil {
 			serverError(w, err)
