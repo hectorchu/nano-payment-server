@@ -56,6 +56,7 @@ func main() {
 		r.Body.Close()
 		resp, _ := http.Post("http://[::1]:8090"+r.RequestURI, "application/json", &buf)
 		if resp.StatusCode != http.StatusOK {
+			w.WriteHeader(resp.StatusCode)
 			io.Copy(w, resp.Body)
 			resp.Body.Close()
 			return
@@ -76,8 +77,15 @@ func main() {
 		r.Body.Close()
 		payment, _ := getPaymentRequest(v.ID)
 		json.NewEncoder(w).Encode(map[string]string{
-			"block_hash": payment.hash.String(),
+			"block_hash": payment.Hash.String(),
 		})
+	})
+	http.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
+		payments, _ := getPaymentRequests()
+		if len(payments) > 10 {
+			payments = payments[len(payments)-10:]
+		}
+		json.NewEncoder(w).Encode(payments)
 	})
 	http.Handle("/", http.FileServer(http.Dir("./public")))
 	http.ListenAndServe(":8080", nil)

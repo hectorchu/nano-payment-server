@@ -66,6 +66,9 @@ func paymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var block rpc.Block
 	if err = json.NewDecoder(r.Body).Decode(&block); err != nil {
+		if err == io.EOF {
+			err = errors.New("Please paste this URL into a wallet which supports payment URLs")
+		}
 		badRequest(w, err)
 		return
 	}

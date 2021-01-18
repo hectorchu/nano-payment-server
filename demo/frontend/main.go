@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	apple  = &itemRow{name: "Apple", price: nanoAmount("0.000001")}
-	banana = &itemRow{name: "Banana", price: nanoAmount("0.000002")}
+	apple   = &itemRow{name: "Apple", price: nanoAmount("0.000001")}
+	banana  = &itemRow{name: "Banana", price: nanoAmount("0.000002")}
+	history = &purchaseHistory{}
 )
 
 func main() {
@@ -26,6 +27,7 @@ func main() {
 	go p.wv.loop()
 	go apple.loop()
 	go banana.loop()
+	history.fetch(false)
 	vecty.RenderBody(p)
 }
 
@@ -43,8 +45,10 @@ func (p *pageView) Render() vecty.ComponentOrHTML {
 	return elem.Body(
 		p.wv,
 		elem.Div(vecty.Markup(vecty.Style("margin-top", "10px"))),
-		elem.Div(apple),
-		elem.Div(banana),
+		apple,
+		banana,
+		elem.Div(vecty.Markup(vecty.Style("margin-top", "10px"))),
+		history,
 	)
 }
 
@@ -93,6 +97,7 @@ func (r *itemRow) loop() {
 			r.PaymentURL = ""
 			r.hash = v.Hash
 			vecty.Rerender(r)
+			history.fetch(true)
 		}
 	}
 }
@@ -109,6 +114,7 @@ func (r *itemRow) onClick(event *vecty.Event) {
 		resp.Body.Close()
 		r.hash = nil
 		vecty.Rerender(r)
+		history.fetch(true)
 	}()
 }
 
@@ -125,12 +131,75 @@ func (r *itemRow) Render() vecty.ComponentOrHTML {
 			vecty.Markup(prop.Href(r.PaymentURL)),
 			vecty.Text("Payment Link"),
 		)),
-		vecty.If(r.hash != nil, elem.Anchor(
-			vecty.Markup(
-				prop.Href("https://nanolooker.com/block/"+r.hash.String()),
-				vecty.Property("target", "_blank"),
+		vecty.If(r.hash != nil, &blockHash{hash: r.hash, text: "Payment Received, Thank You!"}),
+	)
+}
+
+type blockHash struct {
+	vecty.Core
+	hash rpc.BlockHash
+	text string
+}
+
+func (h *blockHash) Render() vecty.ComponentOrHTML {
+	if h.text == "" {
+		h.text = h.hash.String()
+	}
+	return elem.Anchor(
+		vecty.Markup(
+			prop.Href("https://nanolooker.com/block/"+h.hash.String()),
+			vecty.Property("target", "_blank"),
+		),
+		vecty.Text(h.text),
+	)
+}
+
+type purchaseHistory struct {
+	vecty.Core
+	rows []*purchaseHistoryItem
+}
+
+func (h *purchaseHistory) fetch(rerender bool) {
+	resp, _ := http.Get("/history")
+	json.NewDecoder(resp.Body).Decode(&h.rows)
+	resp.Body.Close()
+	if rerender {
+		vecty.Rerender(h)
+	}
+}
+
+func (h *purchaseHistory) Render() vecty.ComponentOrHTML {
+	var rows vecty.List
+	for i := len(h.rows) - 1; i >= 0; i-- {
+		rows = append(rows, h.rows[i])
+	}
+	return elem.Table(
+		elem.TableHead(
+			vecty.Markup(vecty.Style("text-align", "left")),
+			elem.TableRow(
+				elem.TableHeader(vecty.Text("Payment ID")),
+				elem.TableHeader(vecty.Text("Item name")),
+				elem.TableHeader(vecty.Text("Amount")),
+				elem.TableHeader(vecty.Text("Block hash")),
 			),
-			vecty.Text("Payment Received, Thank You!"),
-		)),
+		),
+		elem.TableBody(rows),
+	)
+}
+
+type purchaseHistoryItem struct {
+	vecty.Core
+	PaymentID string         `json:"payment_id"`
+	ItemName  string         `json:"item_name"`
+	Amount    *rpc.RawAmount `json:"amount"`
+	Hash      rpc.BlockHash  `json:"block_hash"`
+}
+
+func (r *purchaseHistoryItem) Render() vecty.ComponentOrHTML {
+	return elem.TableRow(
+		elem.TableData(vecty.Text(r.PaymentID)),
+		elem.TableData(vecty.Text(r.ItemName)),
+		elem.TableData(vecty.Text(fmt.Sprintf("%s NANO", util.NanoAmount{Raw: &r.Amount.Int}))),
+		vecty.If(len(r.Hash) > 0, elem.TableData(&blockHash{hash: r.Hash})),
 	)
 }

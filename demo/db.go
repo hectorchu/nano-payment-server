@@ -7,15 +7,30 @@ import (
 	"math/big"
 
 	"github.com/hectorchu/gonano/rpc"
-	"github.com/hectorchu/gonano/util"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type paymentRecord struct {
-	paymentID string
-	itemName  string
-	amount    util.NanoAmount
-	hash      rpc.BlockHash
+	PaymentID string         `json:"payment_id"`
+	ItemName  string         `json:"item_name"`
+	Amount    *rpc.RawAmount `json:"amount"`
+	Hash      rpc.BlockHash  `json:"block_hash"`
+}
+
+func (r *paymentRecord) Scan(row interface{ Scan(...interface{}) error }) (err error) {
+	var amount, hash string
+	if err = row.Scan(&r.PaymentID, &r.ItemName, &amount, &hash); err != nil {
+		return
+	}
+	var ok bool
+	r.Amount = new(rpc.RawAmount)
+	if _, ok = r.Amount.SetString(amount, 10); !ok {
+		return errors.New("Could not decode amount")
+	}
+	if hash != "" {
+		r.Hash, err = hex.DecodeString(hash)
+	}
+	return
 }
 
 func withDB(cb func(*sql.DB) error) (err error) {
@@ -29,9 +44,9 @@ func withDB(cb func(*sql.DB) error) (err error) {
 
 func newPaymentRequest(paymentID, itemName string, amount *big.Int) (payment *paymentRecord, err error) {
 	payment = &paymentRecord{
-		paymentID: paymentID,
-		itemName:  itemName,
-		amount:    util.NanoAmount{Raw: amount},
+		PaymentID: paymentID,
+		ItemName:  itemName,
+		Amount:    &rpc.RawAmount{Int: *amount},
 	}
 	err = withDB(func(db *sql.DB) (err error) {
 		tx, err := db.Begin()
@@ -58,26 +73,27 @@ func newPaymentRequest(paymentID, itemName string, amount *big.Int) (payment *pa
 
 func getPaymentRequest(paymentID string) (payment *paymentRecord, err error) {
 	err = withDB(func(db *sql.DB) (err error) {
-		var itemName, amount, hash string
-		if err = db.QueryRow(`
-			SELECT item_name, amount, block_hash FROM payments WHERE payment_id = ?
-		`, paymentID).Scan(&itemName, &amount, &hash); err != nil {
+		payment = new(paymentRecord)
+		return payment.Scan(db.QueryRow("SELECT * FROM payments WHERE payment_id = ?", paymentID))
+	})
+	return
+}
+
+func getPaymentRequests() (payments []*paymentRecord, err error) {
+	err = withDB(func(db *sql.DB) (err error) {
+		rows, err := db.Query("SELECT * FROM payments")
+		if err != nil {
 			return
 		}
-		payment = &paymentRecord{
-			paymentID: paymentID,
-			itemName:  itemName,
-		}
-		var ok bool
-		if payment.amount.Raw, ok = new(big.Int).SetString(amount, 10); !ok {
-			return errors.New("Could not decode amount")
-		}
-		if hash != "" {
-			if payment.hash, err = hex.DecodeString(hash); err != nil {
+		defer rows.Close()
+		for rows.Next() {
+			payment := new(paymentRecord)
+			if err = payment.Scan(rows); err != nil {
 				return
 			}
+			payments = append(payments, payment)
 		}
-		return
+		return rows.Err()
 	})
 	return
 }
