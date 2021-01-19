@@ -16,18 +16,25 @@ import (
 )
 
 var (
-	apple   = &itemRow{name: "Apple", price: nanoAmount("0.000001")}
-	banana  = &itemRow{name: "Banana", price: nanoAmount("0.000002")}
-	history = &purchaseHistory{}
+	apple    = &itemRow{name: "Apple", price: nanoAmount("0.000001")}
+	banana   = &itemRow{name: "Banana", price: nanoAmount("0.000002")}
+	history  = &purchaseHistory{}
+	rerender = make(chan vecty.Component)
 )
 
 func main() {
 	vecty.SetTitle("Nano Payment Server Demo")
 	p := &pageView{wv: new(walletView)}
+	p.wv.fetch()
+	history.fetch()
 	go p.wv.loop()
 	go apple.loop()
 	go banana.loop()
-	history.fetch(false)
+	go func() {
+		for {
+			vecty.Rerender(<-rerender)
+		}
+	}()
 	vecty.RenderBody(p)
 }
 
@@ -57,12 +64,16 @@ type walletView struct {
 	Account, Balance string
 }
 
+func (w *walletView) fetch() {
+	resp, _ := http.Get("/account")
+	json.NewDecoder(resp.Body).Decode(w)
+	resp.Body.Close()
+}
+
 func (w *walletView) loop() {
-	for tick := time.Tick(5 * time.Second); ; <-tick {
-		resp, _ := http.Get("/account")
-		json.NewDecoder(resp.Body).Decode(w)
-		resp.Body.Close()
-		vecty.Rerender(w)
+	for range time.Tick(5 * time.Second) {
+		w.fetch()
+		rerender <- w
 	}
 }
 
@@ -96,8 +107,9 @@ func (r *itemRow) loop() {
 			r.PaymentID = ""
 			r.PaymentURL = ""
 			r.hash = v.Hash
-			vecty.Rerender(r)
-			history.fetch(true)
+			history.fetch()
+			rerender <- r
+			rerender <- history
 		}
 	}
 }
@@ -113,8 +125,9 @@ func (r *itemRow) onClick(event *vecty.Event) {
 		json.NewDecoder(resp.Body).Decode(r)
 		resp.Body.Close()
 		r.hash = nil
-		vecty.Rerender(r)
-		history.fetch(true)
+		history.fetch()
+		rerender <- r
+		rerender <- history
 	}()
 }
 
@@ -160,13 +173,10 @@ type purchaseHistory struct {
 	rows []*purchaseHistoryItem
 }
 
-func (h *purchaseHistory) fetch(rerender bool) {
+func (h *purchaseHistory) fetch() {
 	resp, _ := http.Get("/history")
 	json.NewDecoder(resp.Body).Decode(&h.rows)
 	resp.Body.Close()
-	if rerender {
-		vecty.Rerender(h)
-	}
 }
 
 func (h *purchaseHistory) Render() vecty.ComponentOrHTML {
