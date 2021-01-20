@@ -26,3 +26,11 @@ Mode of operation
 -----------------
 
 The operator's regular server software (perhaps an e-commerce platform) will send a request to this server (`/new_payment`) with a JSON body containing the NANO `account` to receive on and the `amount` receivable. In response they will receive a payment `id`. The payment URL which should be sent to the payer will then be `/payment?id=<id>`. The payer's wallet should `POST` in JSON format a signed block (minus proof-of-work) to this URL. This server will then validate the block, calculate the proof-of-work and send the block on the network. The operator's server can be notified of successful payment via a callback URL.
+
+Running the demo
+----------------
+
+- Run the payment server on port `8090`: `go run . -p 8090`
+- Compile the frontend: `cd demo && GOOS=js GOARCH=wasm go build -o public/main.wasm ./frontend && gzip -f public/main.wasm`
+- Run the demo server (from directory `demo`): `go run .`
+- The server can be accessed from a web browser on port `8080`.
