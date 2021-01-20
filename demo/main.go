@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path"
+	"strings"
 
 	"github.com/hectorchu/gonano/rpc"
 	"github.com/hectorchu/gonano/util"
 	"github.com/hectorchu/gonano/wallet"
+	"github.com/lpar/gzipped/v2"
 )
 
 func main() {
@@ -87,6 +90,16 @@ func main() {
 		}
 		json.NewEncoder(w).Encode(payments)
 	})
-	http.Handle("/", http.FileServer(http.Dir("./public")))
+	http.Handle("/", withIndexHTML(gzipped.FileServer(gzipped.Dir("./public"))))
 	http.ListenAndServe(":8080", nil)
+}
+
+func withIndexHTML(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") || len(r.URL.Path) == 0 {
+			newpath := path.Join(r.URL.Path, "index.html")
+			r.URL.Path = newpath
+		}
+		h.ServeHTTP(w, r)
+	})
 }
