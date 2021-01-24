@@ -74,12 +74,13 @@ func sendBlock(block *rpc.Block) (err error) {
 	for timer := time.After(time.Minute); ; {
 		select {
 		case m := <-wsClient.Messages:
-			cm, ok := m.(*websocket.Confirmation)
-			if !ok {
-				break
-			}
-			if bytes.Equal(cm.Hash, hash) {
-				return
+			switch m := m.(type) {
+			case *websocket.Confirmation:
+				if bytes.Equal(m.Hash, hash) {
+					return
+				}
+			case error:
+				return m
 			}
 		case <-timer:
 			return errors.New("Timed out")
