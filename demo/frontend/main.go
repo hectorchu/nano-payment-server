@@ -174,9 +174,11 @@ type purchaseHistory struct {
 }
 
 func (h *purchaseHistory) fetch() {
+	var rows []*purchaseHistoryItem
 	resp, _ := http.Get("/history")
-	json.NewDecoder(resp.Body).Decode(&h.rows)
+	json.NewDecoder(resp.Body).Decode(&rows)
 	resp.Body.Close()
+	h.rows = rows
 }
 
 func (h *purchaseHistory) Render() vecty.ComponentOrHTML {
@@ -200,10 +202,10 @@ func (h *purchaseHistory) Render() vecty.ComponentOrHTML {
 
 type purchaseHistoryItem struct {
 	vecty.Core
-	PaymentID string         `json:"payment_id"`
-	ItemName  string         `json:"item_name"`
-	Amount    *rpc.RawAmount `json:"amount"`
-	Hash      rpc.BlockHash  `json:"block_hash"`
+	PaymentID string         `json:"payment_id" vecty:"prop"`
+	ItemName  string         `json:"item_name" vecty:"prop"`
+	Amount    *rpc.RawAmount `json:"amount" vecty:"prop"`
+	Hash      rpc.BlockHash  `json:"block_hash" vecty:"prop"`
 }
 
 func (r *purchaseHistoryItem) Render() vecty.ComponentOrHTML {
