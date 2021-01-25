@@ -8,10 +8,13 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/hectorchu/gonano/rpc"
-	"github.com/hectorchu/gonano/util"
 	"github.com/hectorchu/gonano/wallet"
+	nanows "github.com/hectorchu/gonano/websocket"
+	"github.com/hectorchu/nano-payment-server/demo/message"
 	"github.com/lpar/gzipped/v2"
 )
 
@@ -21,12 +24,64 @@ func main() {
 	w, _ := wallet.NewWallet(seed)
 	w.RPC.URL = "http://[::1]:7076"
 	a, _ := w.NewAccount(nil)
-	http.HandleFunc("/account", func(w http.ResponseWriter, r *http.Request) {
-		balance, pending, _ := a.Balance()
-		json.NewEncoder(w).Encode(map[string]string{
-			"account": a.Address(),
-			"balance": util.NanoAmount{Raw: balance.Add(balance, pending)}.String(),
-		})
+	ws := nanows.Client{URL: "ws://[::1]:7078"}
+	ws.Connect()
+	group := message.ClientGroup{}
+	var (
+		sendBalance = func() {
+			if balance, pending, err := a.Balance(); err == nil {
+				group.Broadcast(&message.Balance{
+					Account: a.Address(),
+					Balance: &rpc.RawAmount{Int: *balance.Add(balance, pending)},
+				})
+			}
+		}
+		sendPaymentRecord = func(id string) {
+			payment, _ := getPaymentRequest(id)
+			group.Broadcast(payment)
+		}
+		sendHistory = func() {
+			history, _ := getPaymentRequests()
+			if len(history) > 10 {
+				history = history[len(history)-10:]
+			}
+			group.Broadcast(&history)
+		}
+	)
+	go func() {
+		for {
+			switch m := (<-ws.Messages).(type) {
+			case *nanows.Confirmation:
+				if m.Block.LinkAsAccount == a.Address() {
+					sendBalance()
+				}
+			case error:
+				ws.Close()
+				for ws.Connect() != nil {
+					time.Sleep(5 * time.Second)
+				}
+			}
+		}
+	}()
+	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		var (
+			upgrader = websocket.Upgrader{}
+			conn, _  = upgrader.Upgrade(w, r, nil)
+			c        = message.NewClient(conn)
+			key      = group.Add(c)
+		)
+		sendBalance()
+		sendHistory()
+		for {
+			select {
+			case <-c.In:
+			case err := <-c.Err:
+				c.Err <- err
+				group.Remove(key)
+				conn.Close()
+				return
+			}
+		}
 	})
 	http.HandleFunc("/buy", func(w http.ResponseWriter, r *http.Request) {
 		var v struct {
@@ -52,6 +107,7 @@ func main() {
 			"payment_id":  v2.ID,
 			"payment_url": "/payment?id=" + v2.ID,
 		})
+		sendHistory()
 	})
 	http.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer
@@ -71,24 +127,8 @@ func main() {
 		json.NewDecoder(resp.Body).Decode(&v)
 		resp.Body.Close()
 		updatePaymentRequest(v.ID, v.Hash)
-	})
-	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		var v struct {
-			ID string `json:"id"`
-		}
-		json.NewDecoder(r.Body).Decode(&v)
-		r.Body.Close()
-		payment, _ := getPaymentRequest(v.ID)
-		json.NewEncoder(w).Encode(map[string]string{
-			"block_hash": payment.Hash.String(),
-		})
-	})
-	http.HandleFunc("/history", func(w http.ResponseWriter, r *http.Request) {
-		payments, _ := getPaymentRequests()
-		if len(payments) > 10 {
-			payments = payments[len(payments)-10:]
-		}
-		json.NewEncoder(w).Encode(payments)
+		sendPaymentRecord(v.ID)
+		sendHistory()
 	})
 	http.Handle("/", withIndexHTML(gzipped.FileServer(gzipped.Dir("./public"))))
 	http.ListenAndServe(":8080", nil)
