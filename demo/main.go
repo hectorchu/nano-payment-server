@@ -72,42 +72,42 @@ func main() {
 		)
 		sendBalance()
 		sendHistory()
+	Loop:
 		for {
 			select {
-			case <-c.In:
+			case m := <-c.In:
+				switch m := m.(type) {
+				case *message.BuyRequest:
+					var buf bytes.Buffer
+					json.NewEncoder(&buf).Encode(map[string]string{
+						"account": a.Address(),
+						"amount":  m.Payment.Amount.String(),
+					})
+					resp, _ := http.Post("http://[::1]:8090/new_payment", "application/json", &buf)
+					var v struct {
+						ID string `json:"id"`
+					}
+					json.NewDecoder(resp.Body).Decode(&v)
+					resp.Body.Close()
+					payment, _ := newPaymentRequest(v.ID, m.Payment.ItemName, &m.Payment.Amount.Int)
+					select {
+					case c.Out <- &message.BuyRequest{
+						Payment:    payment,
+						PaymentURL: "/payment?id=" + v.ID,
+					}:
+					case err := <-c.Err:
+						c.Err <- err
+						break Loop
+					}
+					sendHistory()
+				}
 			case err := <-c.Err:
 				c.Err <- err
-				group.Remove(key)
-				conn.Close()
-				return
+				break Loop
 			}
 		}
-	})
-	http.HandleFunc("/buy", func(w http.ResponseWriter, r *http.Request) {
-		var v struct {
-			Name   string
-			Amount *rpc.RawAmount
-		}
-		json.NewDecoder(r.Body).Decode(&v)
-		r.Body.Close()
-
-		var buf bytes.Buffer
-		json.NewEncoder(&buf).Encode(map[string]string{
-			"account": a.Address(),
-			"amount":  v.Amount.String(),
-		})
-		resp, _ := http.Post("http://[::1]:8090/new_payment", "application/json", &buf)
-		var v2 struct {
-			ID string `json:"id"`
-		}
-		json.NewDecoder(resp.Body).Decode(&v2)
-		resp.Body.Close()
-		newPaymentRequest(v2.ID, v.Name, &v.Amount.Int)
-		json.NewEncoder(w).Encode(map[string]string{
-			"payment_id":  v2.ID,
-			"payment_url": "/payment?id=" + v2.ID,
-		})
-		sendHistory()
+		group.Remove(key)
+		conn.Close()
 	})
 	http.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
 		var buf bytes.Buffer

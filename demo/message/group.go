@@ -40,7 +40,11 @@ func (g *ClientGroup) Remove(key int) {
 func (g *ClientGroup) Broadcast(msg interface{}) {
 	g.m.Lock()
 	for _, c := range g.c {
-		c.c.Out <- msg
+		select {
+		case c.c.Out <- msg:
+		case err := <-c.c.Err:
+			c.c.Err <- err
+		}
 	}
 	g.m.Unlock()
 }

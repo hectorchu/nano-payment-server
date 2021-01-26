@@ -13,12 +13,18 @@ type Balance struct {
 	Balance *rpc.RawAmount
 }
 
+// BuyRequest encodes a buy request.
+type BuyRequest struct {
+	Payment    *PaymentRecord
+	PaymentURL string
+}
+
 // PaymentRecord encodes a payment record.
 type PaymentRecord struct {
-	PaymentID string         `json:"payment_id"`
-	ItemName  string         `json:"item_name"`
-	Amount    *rpc.RawAmount `json:"amount"`
-	Hash      rpc.BlockHash  `json:"block_hash"`
+	PaymentID string
+	ItemName  string
+	Amount    *rpc.RawAmount
+	Hash      rpc.BlockHash
 }
 
 // PurchaseHistory encodes the purchase history.
@@ -27,6 +33,7 @@ type PurchaseHistory []*PaymentRecord
 func messages() []interface{} {
 	return []interface{}{
 		new(Balance),
+		new(BuyRequest),
 		new(PaymentRecord),
 		new(PurchaseHistory),
 	}

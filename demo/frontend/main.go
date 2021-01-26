@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"syscall/js"
 	"time"
 
@@ -28,6 +25,7 @@ var (
 	}
 	history  = &purchaseHistory{}
 	rerender = make(chan vecty.Component)
+	wsClient *message.Client
 )
 
 func main() {
@@ -57,18 +55,27 @@ func wsConnect() (err error) {
 	if err != nil {
 		return
 	}
-	c := message.NewClient(wsAdapter{conn})
+	wsClient = message.NewClient(wsAdapter{conn})
 	go func() {
 		for {
 			select {
-			case m := <-c.In:
+			case m := <-wsClient.In:
 				switch m := m.(type) {
 				case *message.Balance:
 					wallet.balance = m
 					rerender <- wallet
+				case *message.BuyRequest:
+					for _, item := range purchaseItems {
+						if item.name == m.Payment.ItemName {
+							item.paymentID = m.Payment.PaymentID
+							item.paymentURL = m.PaymentURL
+							item.hash = nil
+							rerender <- item
+						}
+					}
 				case *message.PaymentRecord:
 					for _, item := range purchaseItems {
-						if item.PaymentID == m.PaymentID {
+						if item.paymentID == m.PaymentID {
 							item.hash = m.Hash
 							rerender <- item
 						}
@@ -77,8 +84,8 @@ func wsConnect() (err error) {
 					history.rows = *m
 					rerender <- history
 				}
-			case err = <-c.Err:
-				c.Err <- err
+			case err = <-wsClient.Err:
+				wsClient.Err <- err
 				conn.Close(websocket.StatusProtocolError, err.Error())
 				for wsConnect() != nil {
 					time.Sleep(5 * time.Second)
@@ -133,24 +140,23 @@ type purchaseItem struct {
 	vecty.Core
 	name       string
 	price      util.NanoAmount
-	PaymentID  string `json:"payment_id"`
-	PaymentURL string `json:"payment_url"`
+	paymentID  string
+	paymentURL string
 	hash       rpc.BlockHash
 }
 
 func (r *purchaseItem) onClick(event *vecty.Event) {
-	var buf bytes.Buffer
-	json.NewEncoder(&buf).Encode(map[string]string{
-		"name":   r.name,
-		"amount": r.price.Raw.String(),
-	})
-	go func() {
-		resp, _ := http.Post("/buy", "application/json", &buf)
-		json.NewDecoder(resp.Body).Decode(r)
-		resp.Body.Close()
-		r.hash = nil
-		rerender <- r
-	}()
+	c := wsClient
+	select {
+	case c.Out <- &message.BuyRequest{
+		Payment: &message.PaymentRecord{
+			ItemName: r.name,
+			Amount:   &rpc.RawAmount{*r.price.Raw},
+		},
+	}:
+	case err := <-c.Err:
+		c.Err <- err
+	}
 }
 
 func (r *purchaseItem) Render() vecty.ComponentOrHTML {
@@ -162,8 +168,8 @@ func (r *purchaseItem) Render() vecty.ComponentOrHTML {
 			vecty.Text("Buy"),
 		),
 		elem.Span(vecty.Markup(vecty.Style("margin-left", "10px"))),
-		vecty.If(r.PaymentURL != "" && r.hash == nil, elem.Anchor(
-			vecty.Markup(prop.Href(r.PaymentURL)),
+		vecty.If(r.paymentURL != "" && r.hash == nil, elem.Anchor(
+			vecty.Markup(prop.Href(r.paymentURL)),
 			vecty.Text("Payment Link"),
 		)),
 		vecty.If(r.hash != nil, &blockHash{Hash: r.hash, Text: "Payment Received, Thank You!"}),
