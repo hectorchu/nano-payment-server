@@ -55,7 +55,7 @@ func wsConnect() (err error) {
 	if err != nil {
 		return
 	}
-	wsClient = message.NewClient(wsAdapter{conn})
+	wsClient = message.NewClient(wsAdapter{conn}, message.Messages)
 	go func() {
 		for {
 			v, err := wsClient.Read()

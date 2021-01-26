@@ -3,6 +3,7 @@ package message
 import (
 	"encoding/hex"
 	"errors"
+	"reflect"
 
 	"github.com/hectorchu/gonano/rpc"
 )
@@ -30,13 +31,12 @@ type PaymentRecord struct {
 // PurchaseHistory encodes the purchase history.
 type PurchaseHistory []*PaymentRecord
 
-func messages() []interface{} {
-	return []interface{}{
-		new(Balance),
-		new(BuyRequest),
-		new(PaymentRecord),
-		new(PurchaseHistory),
-	}
+// Messages is the list of possible message types.
+var Messages = []reflect.Type{
+	reflect.TypeOf(Balance{}),
+	reflect.TypeOf(BuyRequest{}),
+	reflect.TypeOf(PaymentRecord{}),
+	reflect.TypeOf(PurchaseHistory{}),
 }
 
 // Scan populates a payment record from the DB.

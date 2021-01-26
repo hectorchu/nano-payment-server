@@ -4,9 +4,10 @@ import "reflect"
 
 // Client is a websocket client.
 type Client struct {
-	conn    jsonReadWriter
-	in, out chan interface{}
-	err     chan error
+	conn     jsonReadWriter
+	messages []reflect.Type
+	in, out  chan interface{}
+	err      chan error
 }
 
 type jsonReadWriter interface {
@@ -15,12 +16,13 @@ type jsonReadWriter interface {
 }
 
 // NewClient creates a Client.
-func NewClient(conn jsonReadWriter) (c *Client) {
+func NewClient(conn jsonReadWriter, messages []reflect.Type) (c *Client) {
 	c = &Client{
-		conn: conn,
-		in:   make(chan interface{}),
-		out:  make(chan interface{}),
-		err:  make(chan error, 1),
+		conn:     conn,
+		messages: messages,
+		in:       make(chan interface{}),
+		out:      make(chan interface{}),
+		err:      make(chan error, 1),
 	}
 	go c.readLoop()
 	go c.writeLoop()
@@ -55,8 +57,9 @@ func (c *Client) readLoop() {
 			c.err <- err
 			return
 		}
-		for _, v = range messages() {
-			if reflect.TypeOf(v).String() == Type {
+		for _, t := range c.messages {
+			if reflect.PtrTo(t).String() == Type {
+				v = reflect.New(t).Interface()
 				break
 			}
 		}

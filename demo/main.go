@@ -67,7 +67,7 @@ func main() {
 		var (
 			upgrader = websocket.Upgrader{}
 			conn, _  = upgrader.Upgrade(w, r, nil)
-			c        = message.NewClient(conn)
+			c        = message.NewClient(conn, message.Messages)
 			key      = group.Add(c)
 		)
 		defer conn.Close()
