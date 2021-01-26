@@ -37,14 +37,10 @@ func (g *ClientGroup) Remove(key int) {
 }
 
 // Broadcast sends a message to every Client.
-func (g *ClientGroup) Broadcast(msg interface{}) {
+func (g *ClientGroup) Broadcast(v interface{}) {
 	g.m.Lock()
 	for _, c := range g.c {
-		select {
-		case c.c.Out <- msg:
-		case err := <-c.c.Err:
-			c.c.Err <- err
-		}
+		c.c.Write(v)
 	}
 	g.m.Unlock()
 }

@@ -58,39 +58,37 @@ func wsConnect() (err error) {
 	wsClient = message.NewClient(wsAdapter{conn})
 	go func() {
 		for {
-			select {
-			case m := <-wsClient.In:
-				switch m := m.(type) {
-				case *message.Balance:
-					wallet.balance = m
-					rerender <- wallet
-				case *message.BuyRequest:
-					for _, item := range purchaseItems {
-						if item.name == m.Payment.ItemName {
-							item.paymentID = m.Payment.PaymentID
-							item.paymentURL = m.PaymentURL
-							item.hash = nil
-							rerender <- item
-						}
-					}
-				case *message.PaymentRecord:
-					for _, item := range purchaseItems {
-						if item.paymentID == m.PaymentID {
-							item.hash = m.Hash
-							rerender <- item
-						}
-					}
-				case *message.PurchaseHistory:
-					history.rows = *m
-					rerender <- history
-				}
-			case err = <-wsClient.Err:
-				wsClient.Err <- err
+			v, err := wsClient.Read()
+			if err != nil {
 				conn.Close(websocket.StatusProtocolError, err.Error())
 				for wsConnect() != nil {
 					time.Sleep(5 * time.Second)
 				}
 				return
+			}
+			switch m := v.(type) {
+			case *message.Balance:
+				wallet.balance = m
+				rerender <- wallet
+			case *message.BuyRequest:
+				for _, item := range purchaseItems {
+					if item.name == m.Payment.ItemName {
+						item.paymentID = m.Payment.PaymentID
+						item.paymentURL = m.PaymentURL
+						item.hash = nil
+						rerender <- item
+					}
+				}
+			case *message.PaymentRecord:
+				for _, item := range purchaseItems {
+					if item.paymentID == m.PaymentID {
+						item.hash = m.Hash
+						rerender <- item
+					}
+				}
+			case *message.PurchaseHistory:
+				history.rows = *m
+				rerender <- history
 			}
 		}
 	}()
@@ -146,17 +144,12 @@ type purchaseItem struct {
 }
 
 func (r *purchaseItem) onClick(event *vecty.Event) {
-	c := wsClient
-	select {
-	case c.Out <- &message.BuyRequest{
+	wsClient.Write(&message.BuyRequest{
 		Payment: &message.PaymentRecord{
 			ItemName: r.name,
 			Amount:   &rpc.RawAmount{*r.price.Raw},
 		},
-	}:
-	case err := <-c.Err:
-		c.Err <- err
-	}
+	})
 }
 
 func (r *purchaseItem) Render() vecty.ComponentOrHTML {

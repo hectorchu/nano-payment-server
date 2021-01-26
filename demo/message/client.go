@@ -4,71 +4,89 @@ import "reflect"
 
 // Client is a websocket client.
 type Client struct {
-	conn    jsonOps
-	In, Out chan interface{}
-	Err     chan error
+	conn    jsonReadWriter
+	in, out chan interface{}
+	err     chan error
 }
 
-type jsonOps interface {
+type jsonReadWriter interface {
 	ReadJSON(interface{}) error
 	WriteJSON(interface{}) error
 }
 
 // NewClient creates a Client.
-func NewClient(conn jsonOps) (c *Client) {
+func NewClient(conn jsonReadWriter) (c *Client) {
 	c = &Client{
 		conn: conn,
-		In:   make(chan interface{}),
-		Out:  make(chan interface{}),
-		Err:  make(chan error, 1),
+		in:   make(chan interface{}),
+		out:  make(chan interface{}),
+		err:  make(chan error, 1),
 	}
-	go c.read()
-	go c.write()
+	go c.readLoop()
+	go c.writeLoop()
 	return
 }
 
-func (c *Client) read() {
+func (c *Client) Read() (v interface{}, err error) {
+	select {
+	case v = <-c.in:
+	case err = <-c.err:
+		c.err <- err
+	}
+	return
+}
+
+func (c *Client) Write(v interface{}) (err error) {
+	select {
+	case c.out <- v:
+	case err = <-c.err:
+		c.err <- err
+	}
+	return
+}
+
+func (c *Client) readLoop() {
 	for {
 		var (
-			msgType string
-			msg     interface{}
+			Type string
+			v    interface{}
 		)
-		if err := c.conn.ReadJSON(&msgType); err != nil {
-			c.Err <- err
+		if err := c.conn.ReadJSON(&Type); err != nil {
+			c.err <- err
 			return
 		}
-		for _, msg = range messages() {
-			if reflect.TypeOf(msg).String() == msgType {
+		for _, v = range messages() {
+			if reflect.TypeOf(v).String() == Type {
 				break
 			}
 		}
-		if err := c.conn.ReadJSON(msg); err != nil {
-			c.Err <- err
+		if err := c.conn.ReadJSON(v); err != nil {
+			c.err <- err
 			return
 		}
 		select {
-		case c.In <- msg:
-		case err := <-c.Err:
-			c.Err <- err
+		case c.in <- v:
+		case err := <-c.err:
+			c.err <- err
 			return
 		}
 	}
 }
 
-func (c *Client) write() {
+func (c *Client) writeLoop() {
 	for {
 		select {
-		case msg := <-c.Out:
-			if err := c.conn.WriteJSON(reflect.TypeOf(msg).String()); err != nil {
-				c.Err <- err
+		case v := <-c.out:
+			if err := c.conn.WriteJSON(reflect.TypeOf(v).String()); err != nil {
+				c.err <- err
 				return
 			}
-			if err := c.conn.WriteJSON(msg); err != nil {
-				c.Err <- err
+			if err := c.conn.WriteJSON(v); err != nil {
+				c.err <- err
 				return
 			}
-		case err := <-c.Err:
-			c.Err <- err
+		case err := <-c.err:
+			c.err <- err
 			return
 		}
 	}
