@@ -1,22 +1,30 @@
 package message
 
-import "reflect"
+import (
+	"encoding/gob"
+	"io"
+	"reflect"
+)
 
 // Client is a websocket client.
 type Client struct {
-	conn     jsonReadWriter
+	conn     wsConn
 	messages []reflect.Type
 	in, out  chan interface{}
 	err      chan error
+	enc      *gob.Encoder
+	dec      *gob.Decoder
+	r        struct{ io.Reader }
+	w        struct{ io.WriteCloser }
 }
 
-type jsonReadWriter interface {
-	ReadJSON(interface{}) error
-	WriteJSON(interface{}) error
+type wsConn interface {
+	Reader() (io.Reader, error)
+	Writer() (io.WriteCloser, error)
 }
 
 // NewClient creates a Client.
-func NewClient(conn jsonReadWriter, messages []reflect.Type) (c *Client) {
+func NewClient(conn wsConn, messages []reflect.Type) (c *Client) {
 	c = &Client{
 		conn:     conn,
 		messages: messages,
@@ -24,6 +32,8 @@ func NewClient(conn jsonReadWriter, messages []reflect.Type) (c *Client) {
 		out:      make(chan interface{}),
 		err:      make(chan error, 1),
 	}
+	c.enc = gob.NewEncoder(&c.w)
+	c.dec = gob.NewDecoder(&c.r)
 	go c.readLoop()
 	go c.writeLoop()
 	return
@@ -48,49 +58,48 @@ func (c *Client) Write(v interface{}) (err error) {
 }
 
 func (c *Client) readLoop() {
-	for {
-		var (
-			Type string
-			v    interface{}
-		)
-		if err := c.conn.ReadJSON(&Type); err != nil {
-			c.err <- err
-			return
+	var err error
+	for err == nil {
+		if c.r.Reader, err = c.conn.Reader(); err != nil {
+			break
 		}
-		for _, t := range c.messages {
-			if reflect.PtrTo(t).String() == Type {
-				v = reflect.New(t).Interface()
-				break
-			}
+		i := 0
+		if err = c.dec.Decode(&i); err != nil {
+			break
 		}
-		if err := c.conn.ReadJSON(v); err != nil {
-			c.err <- err
-			return
+		v := reflect.New(c.messages[i]).Interface()
+		if err = c.dec.Decode(v); err != nil {
+			break
 		}
 		select {
 		case c.in <- v:
-		case err := <-c.err:
-			c.err <- err
-			return
+		case err = <-c.err:
 		}
 	}
+	c.err <- err
 }
 
 func (c *Client) writeLoop() {
-	for {
+	var err error
+	for err == nil {
 		select {
 		case v := <-c.out:
-			if err := c.conn.WriteJSON(reflect.TypeOf(v).String()); err != nil {
-				c.err <- err
-				return
+			if c.w.WriteCloser, err = c.conn.Writer(); err != nil {
+				break
 			}
-			if err := c.conn.WriteJSON(v); err != nil {
-				c.err <- err
-				return
+			for i, t := range c.messages {
+				if reflect.TypeOf(v) == reflect.PtrTo(t) {
+					if err = c.enc.Encode(i); err != nil {
+						break
+					}
+					if err = c.enc.Encode(v); err != nil {
+						break
+					}
+					err = c.w.WriteCloser.Close()
+				}
 			}
-		case err := <-c.err:
-			c.err <- err
-			return
+		case err = <-c.err:
 		}
 	}
+	c.err <- err
 }

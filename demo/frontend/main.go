@@ -14,7 +14,6 @@ import (
 	"github.com/hexops/vecty/event"
 	"github.com/hexops/vecty/prop"
 	"nhooyr.io/websocket"
-	"nhooyr.io/websocket/wsjson"
 )
 
 var (
@@ -24,29 +23,13 @@ var (
 		{name: "Banana", price: nanoAmount("0.000002")},
 	}
 	history  = &purchaseHistory{}
-	rerender = make(chan vecty.Component)
 	wsClient *message.Client
 )
 
 func main() {
 	vecty.SetTitle("Nano Payment Server Demo")
-	go func() {
-		for {
-			vecty.Rerender(<-rerender)
-		}
-	}()
 	wsConnect()
 	vecty.RenderBody(&pageView{})
-}
-
-type wsAdapter struct{ c *websocket.Conn }
-
-func (w wsAdapter) ReadJSON(v interface{}) error {
-	return wsjson.Read(context.Background(), w.c, v)
-}
-
-func (w wsAdapter) WriteJSON(v interface{}) error {
-	return wsjson.Write(context.Background(), w.c, v)
 }
 
 func wsConnect() (err error) {
@@ -55,7 +38,7 @@ func wsConnect() (err error) {
 	if err != nil {
 		return
 	}
-	wsClient = message.NewClient(wsAdapter{conn}, message.Messages)
+	wsClient = message.NewClient(message.NhooyrAdapter{conn}, message.Messages)
 	go func() {
 		for {
 			v, err := wsClient.Read()
@@ -69,26 +52,26 @@ func wsConnect() (err error) {
 			switch m := v.(type) {
 			case *message.Balance:
 				wallet.balance = m
-				rerender <- wallet
+				vecty.Rerender(wallet)
 			case *message.BuyRequest:
 				for _, item := range purchaseItems {
 					if item.name == m.Payment.ItemName {
 						item.paymentID = m.Payment.PaymentID
 						item.paymentURL = m.PaymentURL
 						item.hash = nil
-						rerender <- item
+						vecty.Rerender(item)
 					}
 				}
 			case *message.PaymentRecord:
 				for _, item := range purchaseItems {
 					if item.paymentID == m.PaymentID {
 						item.hash = m.Hash
-						rerender <- item
+						vecty.Rerender(item)
 					}
 				}
 			case *message.PurchaseHistory:
 				history.rows = *m
-				rerender <- history
+				vecty.Rerender(history)
 			}
 		}
 	}()

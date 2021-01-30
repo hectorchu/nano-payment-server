@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"flag"
 	"io"
 	"net/http"
-	"path"
-	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,12 +18,17 @@ import (
 )
 
 func main() {
+	var (
+		rpcURL = flag.String("rpc", "http://[::1]:7076", "RPC URL")
+		wsURL  = flag.String("ws", "ws://[::1]:7078", "WebSocket URL")
+	)
+	flag.Parse()
 	seed := make([]byte, 32)
 	rand.Read(seed)
 	w, _ := wallet.NewWallet(seed)
-	w.RPC.URL = "http://[::1]:7076"
+	w.RPC.URL = *rpcURL
 	a, _ := w.NewAccount(nil)
-	ws := nanows.Client{URL: "ws://[::1]:7078"}
+	ws := nanows.Client{URL: *wsURL}
 	ws.Connect()
 	group := message.ClientGroup{}
 	var (
@@ -67,7 +71,7 @@ func main() {
 		var (
 			upgrader = websocket.Upgrader{}
 			conn, _  = upgrader.Upgrade(w, r, nil)
-			c        = message.NewClient(conn, message.Messages)
+			c        = message.NewClient(message.GorillaAdapter{Conn: conn}, message.Messages)
 			key      = group.Add(c)
 		)
 		defer conn.Close()
@@ -124,16 +128,15 @@ func main() {
 		sendPaymentRecord(v.ID)
 		sendHistory()
 	})
-	http.Handle("/", withIndexHTML(gzipped.FileServer(gzipped.Dir("./public"))))
-	http.ListenAndServe(":8080", nil)
-}
-
-func withIndexHTML(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/") || len(r.URL.Path) == 0 {
-			newpath := path.Join(r.URL.Path, "index.html")
-			r.URL.Path = newpath
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		var (
+			dir = gzipped.Dir("./public")
+			fs  = gzipped.FileServer(dir)
+		)
+		if r.URL.Path == "/" {
+			fs = http.FileServer(dir)
 		}
-		h.ServeHTTP(w, r)
+		fs.ServeHTTP(w, r)
 	})
+	http.ListenAndServe(":8080", nil)
 }
