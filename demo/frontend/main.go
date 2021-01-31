@@ -17,19 +17,14 @@ import (
 )
 
 var (
-	wallet        = &walletView{}
-	purchaseItems = []*purchaseItem{
-		{name: "Apple", price: nanoAmount("0.000001")},
-		{name: "Banana", price: nanoAmount("0.000002")},
-	}
-	history  = &purchaseHistory{}
+	page     = newPageView()
 	wsClient *message.Client
 )
 
 func main() {
 	vecty.SetTitle("Nano Payment Server Demo")
 	wsConnect()
-	vecty.RenderBody(&pageView{})
+	vecty.RenderBody(page)
 }
 
 func wsConnect() (err error) {
@@ -49,61 +44,66 @@ func wsConnect() (err error) {
 				}
 				return
 			}
-			switch m := v.(type) {
-			case *message.Balance:
-				wallet.balance = m
-				vecty.Rerender(wallet)
-			case *message.BuyRequest:
-				for _, item := range purchaseItems {
-					if item.name == m.Payment.ItemName {
-						item.paymentID = m.Payment.PaymentID
-						item.paymentURL = m.PaymentURL
-						item.hash = nil
-						vecty.Rerender(item)
-					}
-				}
-			case *message.PaymentRecord:
-				for _, item := range purchaseItems {
-					if item.paymentID == m.PaymentID {
-						item.hash = m.Hash
-						vecty.Rerender(item)
-					}
-				}
-			case *message.PurchaseHistory:
-				history.rows = *m
-				vecty.Rerender(history)
-			}
+			page.process(v)
 		}
 	}()
 	return
 }
 
-func nanoAmount(s string) (n util.NanoAmount) {
-	n, _ = util.NanoAmountFromString(s)
-	return
-}
-
 type pageView struct {
 	vecty.Core
+	wallet  *walletView
+	items   []*purchaseItem
+	history *purchaseHistory
+}
+
+func newPageView() *pageView {
+	nanoAmount := func(s string) (n util.NanoAmount) {
+		n, _ = util.NanoAmountFromString(s)
+		return
+	}
+	return &pageView{
+		wallet: &walletView{},
+		items: []*purchaseItem{
+			{name: "Apple", price: nanoAmount("0.000001")},
+			{name: "Banana", price: nanoAmount("0.000002")},
+		},
+		history: &purchaseHistory{},
+	}
+}
+
+func (p *pageView) process(v interface{}) {
+	p.wallet.process(v)
+	for _, item := range p.items {
+		item.process(v)
+	}
+	p.history.process(v)
 }
 
 func (p *pageView) Render() vecty.ComponentOrHTML {
 	var items vecty.List
-	for _, item := range purchaseItems {
+	for _, item := range p.items {
 		items = append(items, item)
 	}
 	return elem.Body(
-		wallet,
+		p.wallet,
 		elem.Div(vecty.Markup(vecty.Style("margin-top", "10px"))),
 		items,
 		elem.Div(vecty.Markup(vecty.Style("margin-top", "10px"))),
-		history,
+		p.history,
 	)
 }
 
 type walletView struct {
 	vecty.Core
 	balance *message.Balance
+}
+
+func (w *walletView) process(v interface{}) {
+	if v, ok := v.(*message.Balance); ok {
+		w.balance = v
+		vecty.Rerender(w)
+	}
 }
 
 func (w *walletView) Render() vecty.ComponentOrHTML {
@@ -133,6 +133,24 @@ func (r *purchaseItem) onClick(event *vecty.Event) {
 			Amount:   &rpc.RawAmount{*r.price.Raw},
 		},
 	})
+}
+
+func (r *purchaseItem) process(v interface{}) {
+	switch v := v.(type) {
+	case *message.BuyRequest:
+		if v.Payment.ItemName == r.name {
+			r.paymentID = v.Payment.PaymentID
+			r.paymentURL = v.PaymentURL
+			r.hash = nil
+			vecty.Rerender(r)
+		}
+	case *message.PaymentRecord:
+		if v.PaymentID == r.paymentID {
+			r.hash = v.Hash
+			vecty.Rerender(r)
+		}
+	}
+	return
 }
 
 func (r *purchaseItem) Render() vecty.ComponentOrHTML {
@@ -177,12 +195,20 @@ type purchaseHistory struct {
 	rows message.PurchaseHistory
 }
 
+func (h *purchaseHistory) process(v interface{}) {
+	if v, ok := v.(*message.PurchaseHistory); ok {
+		h.rows = *v
+		vecty.Rerender(h)
+	}
+}
+
 func (h *purchaseHistory) Render() vecty.ComponentOrHTML {
 	var rows vecty.List
 	for i := len(h.rows) - 1; i >= 0; i-- {
 		rows = append(rows, &paymentRecord{Payment: h.rows[i]})
 	}
 	return elem.Table(
+		vecty.Markup(vecty.Class("table")),
 		elem.TableHead(
 			vecty.Markup(vecty.Style("text-align", "left")),
 			elem.TableRow(
