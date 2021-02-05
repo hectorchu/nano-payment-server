@@ -19,8 +19,8 @@ import (
 
 func main() {
 	var (
-		rpcURL = flag.String("rpc", "http://[::1]:7076", "RPC URL")
-		wsURL  = flag.String("ws", "ws://[::1]:7078", "WebSocket URL")
+		rpcURL = flag.String("rpc", "https://gonano.dev/rpc", "RPC URL")
+		wsURL  = flag.String("ws", "wss://gonano.dev/ws", "WebSocket URL")
 	)
 	flag.Parse()
 	seed := make([]byte, 32)
@@ -89,11 +89,10 @@ func main() {
 				json.NewEncoder(&buf).Encode(map[string]string{
 					"account": a.Address(),
 					"amount":  m.Payment.Amount.String(),
+					"handoff": "true",
 				})
-				resp, _ := http.Post("http://[::1]:8090/new_payment", "application/json", &buf)
-				var v struct {
-					ID string `json:"id"`
-				}
+				resp, _ := http.Post("http://[::1]:8090/payment/new", "application/json", &buf)
+				var v struct{ ID string }
 				json.NewDecoder(resp.Body).Decode(&v)
 				resp.Body.Close()
 				payment, _ := newPaymentRequest(v.ID, m.Payment.ItemName, &m.Payment.Amount.Int)
@@ -108,22 +107,24 @@ func main() {
 		}
 	})
 	http.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
+		id, _ := r.URL.Query()["id"]
 		var buf bytes.Buffer
 		io.Copy(&buf, r.Body)
-		r.Body.Close()
-		resp, _ := http.Post("http://[::1]:8090"+r.RequestURI, "application/json", &buf)
+		resp, err := http.Post("http://[::1]:8090/payment/pay?id="+id[0], "application/json", &buf)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			w.WriteHeader(resp.StatusCode)
 			io.Copy(w, resp.Body)
-			resp.Body.Close()
 			return
 		}
 		var v struct {
-			ID   string        `json:"id"`
+			ID   string
 			Hash rpc.BlockHash `json:"block_hash"`
 		}
 		json.NewDecoder(resp.Body).Decode(&v)
-		resp.Body.Close()
 		updatePaymentRequest(v.ID, v.Hash)
 		sendPaymentRecord(v.ID)
 		sendHistory()

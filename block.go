@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"math/big"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/hectorchu/gonano/pow"
 	"github.com/hectorchu/gonano/rpc"
 	"github.com/hectorchu/gonano/util"
+	"github.com/hectorchu/gonano/wallet"
 	"github.com/hectorchu/gonano/wallet/ed25519"
 	"github.com/hectorchu/gonano/websocket"
 )
@@ -84,6 +86,42 @@ func sendBlock(block *rpc.Block) (err error) {
 			}
 		case <-timer:
 			return errors.New("Timed out")
+		}
+	}
+}
+
+func waitReceive(
+	ctx context.Context, a *wallet.Account,
+	account string, amount *big.Int, timeout time.Duration,
+) (hash rpc.BlockHash, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	ws := websocket.Client{URL: *wsURL, Ctx: ctx}
+	if err = ws.Connect(); err != nil {
+		return
+	}
+	defer ws.Close()
+	for {
+		select {
+		case m := <-ws.Messages:
+			switch m := m.(type) {
+			case *websocket.Confirmation:
+				if m.Block.LinkAsAccount == a.Address() {
+					if _, err = a.ReceivePending(m.Hash); err != nil {
+						return
+					}
+					if m.Amount.Cmp(amount) == 0 {
+						return a.Send(account, amount)
+					}
+					if _, err = a.Send(m.Account, &m.Amount.Int); err != nil {
+						return
+					}
+				}
+			case error:
+				return nil, m
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
 }

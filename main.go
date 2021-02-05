@@ -17,7 +17,13 @@ var (
 
 func main() {
 	flag.Parse()
-	http.HandleFunc("/new_payment", newPaymentHandler)
-	http.HandleFunc("/payment", paymentHandler)
+	w, err := loadWallet()
+	if err != nil {
+		log.Fatal(err)
+	}
+	http.HandleFunc("/payment/new", newPaymentHandler(w))
+	http.HandleFunc("/payment/wait", waitPaymentHandler(w))
+	http.HandleFunc("/payment/pay", handoffPaymentHandler)
+	http.HandleFunc("/payment/status", statusPaymentHandler)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))
 }
