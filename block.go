@@ -107,30 +107,28 @@ func waitReceive(
 	if err = a.ReceivePendings(); err != nil {
 		return
 	}
-	ai, err := rpcClient.AccountInfo(a.Address())
-	if err != nil {
-		return
-	}
-	if excess := new(big.Int).Sub(&ai.Balance.Int, amount); excess.Sign() >= 0 {
-		if excess.Sign() > 0 {
-			for hash := ai.Frontier; ; {
-				bi, err := rpcClient.BlockInfo(hash)
-				if err != nil {
-					return nil, err
-				}
-				if bi.Subtype == "receive" {
-					if bi, err = rpcClient.BlockInfo(bi.Contents.Link); err != nil {
+	if ai, err := rpcClient.AccountInfo(a.Address()); err == nil {
+		if excess := new(big.Int).Sub(&ai.Balance.Int, amount); excess.Sign() >= 0 {
+			if excess.Sign() > 0 {
+				for hash := ai.Frontier; ; {
+					bi, err := rpcClient.BlockInfo(hash)
+					if err != nil {
 						return nil, err
 					}
-					if _, err = a.Send(bi.BlockAccount, excess); err != nil {
-						return nil, err
+					if bi.Subtype == "receive" {
+						if bi, err = rpcClient.BlockInfo(bi.Contents.Link); err != nil {
+							return nil, err
+						}
+						if _, err = a.Send(bi.BlockAccount, excess); err != nil {
+							return nil, err
+						}
+						break
 					}
-					break
+					hash = bi.Contents.Previous
 				}
-				hash = bi.Contents.Previous
 			}
+			return a.Send(account, amount)
 		}
-		return a.Send(account, amount)
 	}
 	for {
 		select {
