@@ -85,7 +85,10 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 
 func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var v struct{ ID string }
+		var v struct {
+			ID      string
+			Timeout time.Duration `json:",string"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
 			badRequest(w, err)
 			return
@@ -111,7 +114,7 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			serverError(w, err)
 			return
 		}
-		hash, err := waitReceive(r.Context(), a, payment.account, payment.amount.Raw, time.Hour)
+		hash, err := waitReceive(r.Context(), a, payment.account, payment.amount.Raw, v.Timeout*time.Second)
 		if err != nil {
 			serverError(w, err)
 			return

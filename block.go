@@ -96,25 +96,64 @@ func waitReceive(
 ) (hash rpc.BlockHash, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	ws := websocket.Client{URL: *wsURL, Ctx: ctx}
-	if err = ws.Connect(); err != nil {
+	var (
+		rpcClient = rpc.Client{URL: *rpcURL, Ctx: ctx}
+		wsClient  = websocket.Client{URL: *wsURL, Ctx: ctx}
+	)
+	if err = wsClient.Connect(); err != nil {
 		return
 	}
-	defer ws.Close()
+	defer wsClient.Close()
+	if err = a.ReceivePendings(); err != nil {
+		return
+	}
+	ai, err := rpcClient.AccountInfo(a.Address())
+	if err != nil {
+		return
+	}
+	if excess := new(big.Int).Sub(&ai.Balance.Int, amount); excess.Sign() >= 0 {
+		if excess.Sign() > 0 {
+			for hash := ai.Frontier; ; {
+				bi, err := rpcClient.BlockInfo(hash)
+				if err != nil {
+					return nil, err
+				}
+				if bi.Subtype == "receive" {
+					if bi, err = rpcClient.BlockInfo(bi.Contents.Link); err != nil {
+						return nil, err
+					}
+					if _, err = a.Send(bi.BlockAccount, excess); err != nil {
+						return nil, err
+					}
+					break
+				}
+				hash = bi.Contents.Previous
+			}
+		}
+		return a.Send(account, amount)
+	}
 	for {
 		select {
-		case m := <-ws.Messages:
+		case m := <-wsClient.Messages:
 			switch m := m.(type) {
 			case *websocket.Confirmation:
-				if m.Block.LinkAsAccount == a.Address() {
-					if _, err = a.ReceivePending(m.Hash); err != nil {
+				switch a.Address() {
+				case m.Block.LinkAsAccount:
+					if _, err = a.ReceivePending(m.Hash); err != nil && err.Error() != "Unreceivable" {
 						return
 					}
-					if m.Amount.Cmp(amount) == 0 {
+				case m.Block.Account:
+					if excess := new(big.Int).Sub(&m.Block.Balance.Int, amount); excess.Sign() >= 0 {
+						if excess.Sign() > 0 {
+							bi, err := rpcClient.BlockInfo(m.Block.Link)
+							if err != nil {
+								return nil, err
+							}
+							if _, err = a.Send(bi.BlockAccount, excess); err != nil {
+								return nil, err
+							}
+						}
 						return a.Send(account, amount)
-					}
-					if _, err = a.Send(m.Account, &m.Amount.Int); err != nil {
-						return
 					}
 				}
 			case error:
