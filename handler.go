@@ -30,9 +30,8 @@ func serverError(w http.ResponseWriter, err error) {
 func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var v struct {
-			Account string
-			Amount  *rpc.RawAmount
-			Handoff bool `json:",string"`
+			Account, Amount string
+			Handoff         bool `json:",string"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
 			badRequest(w, err)
@@ -46,11 +45,16 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			badRequest(w, err)
 			return
 		}
-		if v.Amount == nil {
+		if v.Amount == "" {
 			badRequest(w, errors.New("Missing amount"))
 			return
 		}
-		payment, err := newPaymentRequest(v.Account, &v.Amount.Int)
+		amount, err := util.NanoAmountFromString(v.Amount)
+		if err != nil {
+			badRequest(w, err)
+			return
+		}
+		payment, err := newPaymentRequest(v.Account, amount.Raw)
 		if err != nil {
 			serverError(w, err)
 			return

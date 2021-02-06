@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/hectorchu/gonano/rpc"
+	"github.com/hectorchu/gonano/util"
 	"github.com/hectorchu/gonano/wallet"
 	nanows "github.com/hectorchu/gonano/websocket"
 	"github.com/hectorchu/nano-payment-server/demo/message"
@@ -88,7 +89,7 @@ func main() {
 				var buf bytes.Buffer
 				json.NewEncoder(&buf).Encode(map[string]string{
 					"account": a.Address(),
-					"amount":  m.Payment.Amount.String(),
+					"amount":  util.NanoAmount{Raw: &m.Payment.Amount.Int}.String(),
 					"handoff": "true",
 				})
 				resp, _ := http.Post("http://[::1]:8090/payment/new", "application/json", &buf)
