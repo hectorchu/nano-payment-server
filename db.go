@@ -17,17 +17,51 @@ type paymentRecord struct {
 	id      string
 	account string
 	amount  util.NanoAmount
-	wallet  uint32
 	hash    rpc.BlockHash
 }
 
-func withDB(cb func(*sql.DB) error) (err error) {
+func withDB(f func(*sql.Tx) error) (err error) {
 	db, err := sql.Open("sqlite3", "./data.db")
 	if err != nil {
 		return
 	}
 	defer db.Close()
-	return cb(db)
+	tx, err := db.Begin()
+	if err != nil {
+		return
+	}
+	if err = f(tx); err != nil {
+		tx.Rollback()
+		return
+	}
+	return tx.Commit()
+}
+
+func getConfig(key string) (value string, err error) {
+	err = withDB(func(tx *sql.Tx) (err error) {
+		value, err = getConfigWithTx(tx, key)
+		return
+	})
+	return
+}
+
+func getConfigWithTx(tx *sql.Tx, key string) (value string, err error) {
+	err = tx.QueryRow("SELECT value FROM config WHERE key = ?", key).Scan(&value)
+	return
+}
+
+func setConfig(key, value string) (err error) {
+	return withDB(func(tx *sql.Tx) error {
+		return setConfigWithTx(tx, key, value)
+	})
+}
+
+func setConfigWithTx(tx *sql.Tx, key, value string) (err error) {
+	if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS config(key TEXT PRIMARY KEY, value TEXT)"); err != nil {
+		return
+	}
+	_, err = tx.Exec("REPLACE INTO config VALUES(?,?)", key, value)
+	return
 }
 
 func newPaymentRequest(account string, amount *big.Int) (payment *paymentRecord, err error) {
@@ -40,36 +74,26 @@ func newPaymentRequest(account string, amount *big.Int) (payment *paymentRecord,
 		account: account,
 		amount:  util.NanoAmount{Raw: amount},
 	}
-	err = withDB(func(db *sql.DB) (err error) {
-		tx, err := db.Begin()
-		if err != nil {
-			return
-		}
+	err = withDB(func(tx *sql.Tx) (err error) {
 		if _, err = tx.Exec(`
-			CREATE TABLE IF NOT EXISTS payments
-			(id TEXT PRIMARY KEY, account TEXT, amount TEXT, wallet INTEGER, block_hash TEXT)
+			CREATE TABLE IF NOT EXISTS
+			payments(id TEXT PRIMARY KEY, account TEXT, amount TEXT, block_hash TEXT)
 		`); err != nil {
-			tx.Rollback()
 			return
 		}
-		if _, err = tx.Exec(`
-			INSERT INTO payments VALUES (?,?,?,?,?)
-		`, payment.id, account, amount.String(), 0, ""); err != nil {
-			tx.Rollback()
-			return
-		}
-		return tx.Commit()
+		_, err = tx.Exec("INSERT INTO payments VALUES(?,?,?,?)", payment.id, account, amount.String(), "")
+		return
 	})
 	return
 }
 
 func getPaymentRequest(id string) (payment *paymentRecord, err error) {
-	err = withDB(func(db *sql.DB) (err error) {
+	err = withDB(func(tx *sql.Tx) (err error) {
 		payment = &paymentRecord{id: id}
 		var amount, hash string
-		if err = db.QueryRow(`
-			SELECT account, amount, wallet, block_hash FROM payments WHERE id = ?
-		`, id).Scan(&payment.account, &amount, &payment.wallet, &hash); err != nil {
+		if err = tx.QueryRow(`
+			SELECT account, amount, block_hash FROM payments WHERE id = ?
+		`, id).Scan(&payment.account, &amount, &hash); err != nil {
 			return
 		}
 		var ok bool
@@ -86,41 +110,9 @@ func getPaymentRequest(id string) (payment *paymentRecord, err error) {
 	return
 }
 
-func updatePaymentRequest(id string, wallet uint32, hash rpc.BlockHash) (err error) {
-	return withDB(func(db *sql.DB) (err error) {
-		tx, err := db.Begin()
-		if err != nil {
-			return
-		}
-		if _, err = tx.Exec(`
-			UPDATE payments SET wallet = ?, block_hash = ? WHERE id = ?
-		`, wallet, hash.String(), id); err != nil {
-			tx.Rollback()
-			return
-		}
-		return tx.Commit()
-	})
-}
-
-func getNextAvailableWallet() (wallet uint32, err error) {
-	wallets := make(map[uint32]bool)
-	if err = withDB(func(db *sql.DB) (err error) {
-		rows, err := db.Query("SELECT wallet FROM payments WHERE wallet > 0")
-		if err != nil {
-			return
-		}
-		defer rows.Close()
-		for rows.Next() {
-			if err = rows.Scan(&wallet); err != nil {
-				return
-			}
-			wallets[wallet] = true
-		}
-		return rows.Err()
-	}); err != nil {
+func updatePaymentRequest(id string, hash rpc.BlockHash) (err error) {
+	return withDB(func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec("UPDATE payments SET block_hash = ? WHERE id = ?", hash.String(), id)
 		return
-	}
-	for wallet = 1; wallets[wallet]; wallet++ {
-	}
-	return
+	})
 }

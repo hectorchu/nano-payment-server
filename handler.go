@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/hectorchu/gonano/rpc"
 	"github.com/hectorchu/gonano/util"
 )
-
-var walletMutex sync.Mutex
 
 func badRequest(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
@@ -67,12 +64,7 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		if v.Handoff {
 			result["url"] = "/payment/pay?id=" + payment.id
 		} else {
-			walletMutex.Lock()
-			index, err := getNextAvailableWallet()
-			if err == nil {
-				err = updatePaymentRequest(payment.id, index, nil)
-			}
-			walletMutex.Unlock()
+			index, err := getFreeWalletIndex(payment.id)
 			if err != nil {
 				serverError(w, err)
 				return
@@ -117,7 +109,12 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			badRequest(w, errors.New("Payment already received"))
 			return
 		}
-		a, err := wallet.getAccount(payment.wallet)
+		index, err := getWalletIndex(payment.id)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		a, err := wallet.getAccount(index)
 		if err != nil {
 			serverError(w, err)
 			return
@@ -127,7 +124,11 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			serverError(w, err)
 			return
 		}
-		if err = updatePaymentRequest(payment.id, 0, hash); err != nil {
+		if err = updatePaymentRequest(payment.id, hash); err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = freeWalletIndex(index); err != nil {
 			serverError(w, err)
 			return
 		}
@@ -172,7 +173,7 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, errors.New("Block for this payment id has already been submitted"))
 		return
 	}
-	if err = updatePaymentRequest(payment.id, 0, hash); err != nil {
+	if err = updatePaymentRequest(payment.id, hash); err != nil {
 		serverError(w, err)
 		return
 	}

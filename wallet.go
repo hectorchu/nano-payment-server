@@ -29,19 +29,12 @@ func (w *Wallet) getAccount(index uint32) (a *wallet.Account, err error) {
 }
 
 func loadWallet() (w *Wallet, err error) {
-	if err = withDB(func(db *sql.DB) (err error) {
-		var seedStr string
-		if err = db.QueryRow("SELECT seed FROM wallet").Scan(&seedStr); err != nil {
-			return
-		}
-		seed, err := hex.DecodeString(seedStr)
+	if seed, err := getConfig("wallet_seed"); err == nil {
+		seed, err := hex.DecodeString(seed)
 		if err != nil {
-			return
+			return nil, err
 		}
-		w, err = newWallet(seed)
-		return
-	}); err == nil {
-		return
+		return newWallet(seed)
 	}
 	seed := make([]byte, 32)
 	if _, err = rand.Read(seed); err != nil {
@@ -50,24 +43,43 @@ func loadWallet() (w *Wallet, err error) {
 	if w, err = newWallet(seed); err != nil {
 		return
 	}
-	err = w.save()
+	err = setConfig("wallet_seed", hex.EncodeToString(seed))
 	return
 }
 
-func (w *Wallet) save() (err error) {
-	return withDB(func(db *sql.DB) (err error) {
-		tx, err := db.Begin()
+func getFreeWalletIndex(id string) (index uint32, err error) {
+	err = withDB(func(tx *sql.Tx) (err error) {
+		if tx.QueryRow(`SELECT rowid FROM wallet WHERE id = "" LIMIT 1`).Scan(&index) == nil {
+			_, err = tx.Exec("UPDATE wallet SET id = ? WHERE rowid = ?", id, index)
+			return
+		}
+		if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS wallet(id TEXT)"); err != nil {
+			return
+		}
+		result, err := tx.Exec("INSERT INTO wallet VALUES(?)", id)
 		if err != nil {
 			return
 		}
-		if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS wallet (seed TEXT)"); err != nil {
-			tx.Rollback()
+		rowid, err := result.LastInsertId()
+		if err != nil {
 			return
 		}
-		if _, err = tx.Exec("INSERT INTO wallet VALUES (?)", hex.EncodeToString(w.seed)); err != nil {
-			tx.Rollback()
-			return
-		}
-		return tx.Commit()
+		index = uint32(rowid)
+		return
+	})
+	return
+}
+
+func getWalletIndex(id string) (index uint32, err error) {
+	err = withDB(func(tx *sql.Tx) error {
+		return tx.QueryRow("SELECT rowid FROM wallet WHERE id = ?", id).Scan(&index)
+	})
+	return
+}
+
+func freeWalletIndex(index uint32) (err error) {
+	return withDB(func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec(`UPDATE wallet SET id = "" WHERE rowid = ?`, index)
+		return
 	})
 }
