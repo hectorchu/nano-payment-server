@@ -25,7 +25,7 @@ Usage
 Mode of operation
 -----------------
 
-The operator's regular server software (perhaps an e-commerce platform) will send a request to this server (`/new_payment`) with a JSON body containing the NANO `account` to receive on and the `amount` receivable. In response they will receive a payment `id`. The payment URL which should be sent to the payer will then be `/payment?id=<id>`. The payer's wallet should `POST` in JSON format a signed block (minus proof-of-work) to this URL. This server will then validate the block, calculate the proof-of-work and send the block on the network. The operator's server can be notified of successful payment via a callback URL.
+The operator's regular server software (perhaps an e-commerce platform) will send a request to this server (`/payment/new`) with a JSON body containing the NANO `account` to receive on and the `amount` receivable. In response they will receive a payment `id`. The payment URL which should be sent to the payer will then be `/payment/pay?id=<id>`. The payer's wallet should `POST` in JSON format a signed block (minus proof-of-work) to this URL. This server will then validate the block, calculate the proof-of-work and send the block on the network. The operator's server can be notified of successful payment via a callback URL.
 
 Running the demo
 ----------------
