@@ -54,6 +54,10 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			badRequest(w, err)
 			return
 		}
+		if amount.Raw.Sign() <= 0 {
+			badRequest(w, errors.New("Amount must be positive"))
+			return
+		}
 		payment, err := newPaymentRequest(v.Account, amount.Raw)
 		if err != nil {
 			serverError(w, err)
