@@ -13,8 +13,10 @@ Usage
 
     -cb string
           Callback URL when payment is fulfilled
+    -db string
+          Path to DB (default "./data.db")
     -p int
-          Listen port (default 8080)
+          Listen port (default 7080)
     -pow string
           RPC Proof-of-Work URL
     -rpc string
@@ -30,7 +32,7 @@ The operator's regular server software (perhaps an e-commerce platform) will sen
 Running the demo
 ----------------
 
-- Run the payment server on port `8090`: `go run . -p 8090`
+- Run the payment server: `go run .`
 - Compile the frontend: `cd demo && GOOS=js GOARCH=wasm go build -o public/main.wasm ./frontend && gzip -f public/main.wasm`
 - Run the demo server (from directory `demo`): `go run .`
 - The server can be accessed from a web browser on port `8080`.

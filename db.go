@@ -20,12 +20,14 @@ type paymentRecord struct {
 	hash    rpc.BlockHash
 }
 
+var db *sql.DB
+
+func initDB() (err error) {
+	db, err = sql.Open("sqlite3", *dbPath)
+	return
+}
+
 func withDB(f func(*sql.Tx) error) (err error) {
-	db, err := sql.Open("sqlite3", "./data.db")
-	if err != nil {
-		return
-	}
-	defer db.Close()
 	tx, err := db.Begin()
 	if err != nil {
 		return

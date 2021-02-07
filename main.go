@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	port        = flag.Int("p", 8080, "Listen port")
+	port        = flag.Int("p", 7080, "Listen port")
+	dbPath      = flag.String("db", "./data.db", "Path to DB")
 	rpcURL      = flag.String("rpc", "http://[::1]:7076", "RPC URL")
 	powURL      = flag.String("pow", "", "RPC Proof-of-Work URL")
 	wsURL       = flag.String("ws", "ws://[::1]:7078", "WebSocket URL")
@@ -17,6 +18,9 @@ var (
 
 func main() {
 	flag.Parse()
+	if err := initDB(); err != nil {
+		log.Fatal(err)
+	}
 	w, err := loadWallet()
 	if err != nil {
 		log.Fatal(err)

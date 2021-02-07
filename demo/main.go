@@ -92,7 +92,7 @@ func main() {
 					"amount":  util.NanoAmount{Raw: &m.Payment.Amount.Int}.String(),
 					"handoff": "true",
 				})
-				resp, _ := http.Post("http://[::1]:8090/payment/new", "application/json", &buf)
+				resp, _ := http.Post("http://[::1]:7080/payment/new", "application/json", &buf)
 				var v struct{ ID string }
 				json.NewDecoder(resp.Body).Decode(&v)
 				resp.Body.Close()
@@ -111,7 +111,7 @@ func main() {
 		id, _ := r.URL.Query()["id"]
 		var buf bytes.Buffer
 		io.Copy(&buf, r.Body)
-		resp, err := http.Post("http://[::1]:8090/payment/pay?id="+id[0], "application/json", &buf)
+		resp, err := http.Post("http://[::1]:7080/payment/pay?id="+id[0], "application/json", &buf)
 		if err != nil {
 			return
 		}
