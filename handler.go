@@ -106,7 +106,12 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			return
 		}
 		if payment.hash != nil {
-			badRequest(w, errors.New("Payment already received"))
+			if err = json.NewEncoder(w).Encode(map[string]string{
+				"id":         payment.id,
+				"block_hash": payment.hash.String(),
+			}); err != nil {
+				serverError(w, err)
+			}
 			return
 		}
 		index, err := getWalletIndex(payment.id)
