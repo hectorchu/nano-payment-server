@@ -77,9 +77,9 @@ func getWalletIndex(id string) (index uint32, err error) {
 	return
 }
 
-func freeWalletIndex(index uint32) (err error) {
+func freeWalletIndex(id string) (err error) {
 	return withDB(func(tx *sql.Tx) (err error) {
-		_, err = tx.Exec(`UPDATE wallet SET id = "" WHERE rowid = ?`, index)
+		_, err = tx.Exec(`UPDATE wallet SET id = "" WHERE id = ?`, id)
 		return
 	})
 }

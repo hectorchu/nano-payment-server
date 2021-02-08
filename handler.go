@@ -136,7 +136,7 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			serverError(w, err)
 			return
 		}
-		if err = freeWalletIndex(index); err != nil {
+		if err = freeWalletIndex(payment.id); err != nil {
 			serverError(w, err)
 			return
 		}
