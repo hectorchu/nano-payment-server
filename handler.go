@@ -14,6 +14,8 @@ import (
 	"github.com/hectorchu/gonano/util"
 )
 
+var paymentMutex = newMutexMap()
+
 func badRequest(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
 	fmt.Fprintln(w, err)
@@ -97,6 +99,8 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			badRequest(w, errors.New("Missing payment id"))
 			return
 		}
+		paymentMutex.lock(v.ID)
+		defer paymentMutex.unlock(v.ID)
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
 			badRequest(w, errors.New("Invalid payment id"))

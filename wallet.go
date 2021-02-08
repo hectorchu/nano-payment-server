@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"sync"
 
 	"github.com/hectorchu/gonano/wallet"
 )
@@ -11,6 +12,7 @@ import (
 // Wallet is a simple wallet.
 type Wallet struct {
 	seed []byte
+	m    sync.Mutex
 	w    *wallet.Wallet
 }
 
@@ -25,6 +27,8 @@ func newWallet(seed []byte) (w *Wallet, err error) {
 }
 
 func (w *Wallet) getAccount(index uint32) (a *wallet.Account, err error) {
+	w.m.Lock()
+	defer w.m.Unlock()
 	return w.w.NewAccount(&index)
 }
 
