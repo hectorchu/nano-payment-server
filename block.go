@@ -129,6 +129,8 @@ func waitReceive(
 			}
 			return a.Send(account, amount)
 		}
+	} else if err.Error() != "Account not found" {
+		return nil, err
 	}
 	for {
 		select {
@@ -161,6 +163,42 @@ func waitReceive(
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func refund(a *wallet.Account) (err error) {
+	client := rpc.Client{URL: *rpcURL}
+	if err = a.ReceivePendings(); err != nil {
+		return
+	}
+	ai, err := client.AccountInfo(a.Address())
+	if err != nil {
+		if err.Error() == "Account not found" {
+			err = nil
+		}
+		return
+	}
+	for hash, balance := ai.Frontier, &ai.Balance.Int; balance.Sign() > 0; {
+		bi, err := client.BlockInfo(hash)
+		if err != nil {
+			return err
+		}
+		if bi.Subtype == "receive" {
+			bi, err := client.BlockInfo(bi.Contents.Link)
+			if err != nil {
+				return err
+			}
+			amount := &bi.Amount.Int
+			if amount.Cmp(balance) > 0 {
+				amount = balance
+			}
+			if _, err = a.Send(bi.BlockAccount, amount); err != nil {
+				return err
+			}
+			balance.Sub(balance, amount)
+		}
+		hash = bi.Contents.Previous
+	}
+	return
 }
 
 func generatePoW(block *rpc.Block) (err error) {

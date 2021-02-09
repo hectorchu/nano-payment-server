@@ -27,6 +27,7 @@ func main() {
 	}
 	http.HandleFunc("/payment/new", newPaymentHandler(w))
 	http.HandleFunc("/payment/wait", waitPaymentHandler(w))
+	http.HandleFunc("/payment/cancel", cancelPaymentHandler(w))
 	http.HandleFunc("/payment/pay", handoffPaymentHandler)
 	http.HandleFunc("/payment/status", statusPaymentHandler)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), nil))

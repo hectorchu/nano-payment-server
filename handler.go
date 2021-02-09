@@ -154,6 +154,60 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 	}
 }
 
+func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var v struct{ ID string }
+		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
+			badRequest(w, err)
+			return
+		}
+		if v.ID == "" {
+			badRequest(w, errors.New("Missing payment id"))
+			return
+		}
+		paymentMutex.lock(v.ID)
+		defer paymentMutex.unlock(v.ID)
+		payment, err := getPaymentRequest(v.ID)
+		if err == sql.ErrNoRows {
+			badRequest(w, errors.New("Invalid payment id"))
+			return
+		} else if err != nil {
+			serverError(w, err)
+			return
+		}
+		if payment.hash != nil {
+			badRequest(w, errors.New("Payment already fulfilled"))
+			return
+		}
+		index, err := getWalletIndex(payment.id)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		a, err := wallet.getAccount(index)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = refund(a); err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = deletePaymentRequest(payment.id); err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = freeWalletIndex(payment.id); err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = json.NewEncoder(w).Encode(map[string]string{}); err != nil {
+			serverError(w, err)
+			return
+		}
+	}
+}
+
 func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.URL.Query()["id"]
 	if !ok {

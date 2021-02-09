@@ -118,3 +118,10 @@ func updatePaymentRequest(id string, hash rpc.BlockHash) (err error) {
 		return
 	})
 }
+
+func deletePaymentRequest(id string) (err error) {
+	return withDB(func(tx *sql.Tx) (err error) {
+		_, err = tx.Exec("DELETE FROM payments WHERE id = ?", id)
+		return
+	})
+}
