@@ -101,6 +101,11 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		}
 		paymentMutex.lock(v.ID)
 		defer paymentMutex.unlock(v.ID)
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
 			badRequest(w, errors.New("Invalid payment id"))
@@ -167,6 +172,11 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		}
 		paymentMutex.lock(v.ID)
 		defer paymentMutex.unlock(v.ID)
+		select {
+		case <-r.Context().Done():
+			return
+		default:
+		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
 			badRequest(w, errors.New("Invalid payment id"))
@@ -214,6 +224,13 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, errors.New("Missing payment id"))
 		return
 	}
+	paymentMutex.lock(id[0])
+	defer paymentMutex.unlock(id[0])
+	select {
+	case <-r.Context().Done():
+		return
+	default:
+	}
 	payment, err := getPaymentRequest(id[0])
 	if err == sql.ErrNoRows {
 		badRequest(w, errors.New("Invalid payment id"))
@@ -240,6 +257,10 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err = updatePaymentRequest(payment.id, hash); err != nil {
+		serverError(w, err)
+		return
+	}
+	if err = freeWalletIndex(payment.id); err != nil {
 		serverError(w, err)
 		return
 	}
