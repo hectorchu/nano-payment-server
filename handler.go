@@ -101,10 +101,8 @@ func waitPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		}
 		paymentMutex.lock(v.ID)
 		defer paymentMutex.unlock(v.ID)
-		select {
-		case <-r.Context().Done():
+		if r.Context().Err() != nil {
 			return
-		default:
 		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
@@ -172,10 +170,8 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		}
 		paymentMutex.lock(v.ID)
 		defer paymentMutex.unlock(v.ID)
-		select {
-		case <-r.Context().Done():
+		if r.Context().Err() != nil {
 			return
-		default:
 		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
@@ -226,10 +222,8 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	paymentMutex.lock(id[0])
 	defer paymentMutex.unlock(id[0])
-	select {
-	case <-r.Context().Done():
+	if r.Context().Err() != nil {
 		return
-	default:
 	}
 	payment, err := getPaymentRequest(id[0])
 	if err == sql.ErrNoRows {
