@@ -90,7 +90,6 @@ func main() {
 				json.NewEncoder(&buf).Encode(map[string]string{
 					"account": a.Address(),
 					"amount":  util.NanoAmount{Raw: &m.Payment.Amount.Int}.String(),
-					"handoff": "true",
 				})
 				resp, _ := http.Post("http://[::1]:7080/payment/new", "application/json", &buf)
 				var v struct{ ID string }

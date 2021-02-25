@@ -85,7 +85,7 @@ func getWalletIndex(id string) (index uint32, err error) {
 
 func getWalletIndexesOlderThan(t time.Time) (ids []string, err error) {
 	err = withDB(func(tx *sql.Tx) (err error) {
-		rows, err := tx.Query(`SELECT id FROM wallet WHERE id != "" AND time < ?`, t.Unix())
+		rows, err := tx.Query("SELECT id FROM wallet WHERE time < ?", t.Unix())
 		if err != nil {
 			return
 		}
@@ -104,7 +104,7 @@ func getWalletIndexesOlderThan(t time.Time) (ids []string, err error) {
 
 func freeWalletIndex(id string) (err error) {
 	return withDB(func(tx *sql.Tx) (err error) {
-		_, err = tx.Exec(`UPDATE wallet SET id = "", time = 0 WHERE id = ?`, id)
+		_, err = tx.Exec(`UPDATE wallet SET id = "", time = NULL WHERE id = ?`, id)
 		return
 	})
 }
