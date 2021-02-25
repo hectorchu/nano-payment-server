@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"sync"
+	"time"
 
 	"github.com/hectorchu/gonano/wallet"
 )
@@ -52,15 +53,16 @@ func loadWallet() (w *Wallet, err error) {
 }
 
 func getFreeWalletIndex(id string) (index uint32, err error) {
+	now := time.Now().Unix()
 	err = withDB(func(tx *sql.Tx) (err error) {
 		if tx.QueryRow(`SELECT rowid FROM wallet WHERE id = "" LIMIT 1`).Scan(&index) == nil {
-			_, err = tx.Exec("UPDATE wallet SET id = ? WHERE rowid = ?", id, index)
+			_, err = tx.Exec("UPDATE wallet SET id = ?, time = ? WHERE rowid = ?", id, now, index)
 			return
 		}
-		if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS wallet(id TEXT)"); err != nil {
+		if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS wallet(id TEXT, time INTEGER)"); err != nil {
 			return
 		}
-		result, err := tx.Exec("INSERT INTO wallet VALUES(?)", id)
+		result, err := tx.Exec("INSERT INTO wallet VALUES(?,?)", id, now)
 		if err != nil {
 			return
 		}
@@ -81,9 +83,28 @@ func getWalletIndex(id string) (index uint32, err error) {
 	return
 }
 
+func getWalletIndexesOlderThan(t time.Time) (ids []string, err error) {
+	err = withDB(func(tx *sql.Tx) (err error) {
+		rows, err := tx.Query(`SELECT id FROM wallet WHERE id != "" AND time < ?`, t.Unix())
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			id := ""
+			if err = rows.Scan(&id); err != nil {
+				return
+			}
+			ids = append(ids, id)
+		}
+		return rows.Err()
+	})
+	return
+}
+
 func freeWalletIndex(id string) (err error) {
 	return withDB(func(tx *sql.Tx) (err error) {
-		_, err = tx.Exec(`UPDATE wallet SET id = "" WHERE id = ?`, id)
+		_, err = tx.Exec(`UPDATE wallet SET id = "", time = 0 WHERE id = ?`, id)
 		return
 	})
 }

@@ -28,10 +28,7 @@ func serverError(w http.ResponseWriter, err error) {
 
 func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var v struct {
-			Account, Amount string
-			Handoff         bool
-		}
+		var v struct{ Account, Amount string }
 		if err := json.NewDecoder(r.Body).Decode(&v); err != nil {
 			badRequest(w, err)
 			return
@@ -62,23 +59,20 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			serverError(w, err)
 			return
 		}
-		result := map[string]string{"id": payment.id}
-		if v.Handoff {
-			result["url"] = "/payment/pay?id=" + payment.id
-		} else {
-			index, err := getFreeWalletIndex(payment.id)
-			if err != nil {
-				serverError(w, err)
-				return
-			}
-			a, err := wallet.getAccount(index)
-			if err != nil {
-				serverError(w, err)
-				return
-			}
-			result["account"] = a.Address()
+		index, err := getFreeWalletIndex(payment.id)
+		if err != nil {
+			serverError(w, err)
+			return
 		}
-		if err := json.NewEncoder(w).Encode(result); err != nil {
+		a, err := wallet.getAccount(index)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if err = json.NewEncoder(w).Encode(map[string]string{
+			"id":      payment.id,
+			"account": a.Address(),
+		}); err != nil {
 			serverError(w, err)
 			return
 		}
@@ -185,25 +179,7 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			badRequest(w, errors.New("Payment already fulfilled"))
 			return
 		}
-		index, err := getWalletIndex(payment.id)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		a, err := wallet.getAccount(index)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		if err = refund(a); err != nil {
-			serverError(w, err)
-			return
-		}
-		if err = deletePaymentRequest(payment.id); err != nil {
-			serverError(w, err)
-			return
-		}
-		if err = freeWalletIndex(payment.id); err != nil {
+		if err = cancel(wallet, payment.id); err != nil {
 			serverError(w, err)
 			return
 		}

@@ -23,6 +23,16 @@ func (m *mutexMap) lock(key string) {
 	m.m.Unlock()
 }
 
+func (m *mutexMap) tryLock(key string) bool {
+	m.m.Lock()
+	defer m.m.Unlock()
+	if m.k[key] {
+		return false
+	}
+	m.k[key] = true
+	return true
+}
+
 func (m *mutexMap) unlock(key string) {
 	m.m.Lock()
 	delete(m.k, key)

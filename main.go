@@ -25,6 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	go scavenger(w)
 	http.HandleFunc("/payment/new", newPaymentHandler(w))
 	http.HandleFunc("/payment/wait", waitPaymentHandler(w))
 	http.HandleFunc("/payment/cancel", cancelPaymentHandler(w))
