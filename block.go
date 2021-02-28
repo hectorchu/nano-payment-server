@@ -55,68 +55,39 @@ func validateBlock(block *rpc.Block, account string, amount *big.Int) (hash rpc.
 }
 
 func sendBlock(block *rpc.Block) (err error) {
-	var (
-		rpcClient = rpc.Client{URL: *rpcURL}
-		wsClient  = websocket.Client{URL: *wsURL}
-	)
-	hash, err := block.Hash()
-	if err != nil {
-		return
-	}
 	if err = generatePoW(block); err != nil {
 		return
 	}
-	if err = wsClient.Connect(); err != nil {
-		return
-	}
-	defer wsClient.Close()
-	if _, err = rpcClient.Process(block, "send"); err != nil {
-		return
-	}
-	for timer := time.After(time.Minute); ; {
-		select {
-		case m := <-wsClient.Messages:
-			switch m := m.(type) {
-			case *websocket.Confirmation:
-				if bytes.Equal(m.Hash, hash) {
-					return
-				}
-			case error:
-				return m
-			}
-		case <-timer:
-			return errors.New("Timed out")
-		}
-	}
+	client := rpc.Client{URL: *rpcURL}
+	_, err = client.Process(block, "send")
+	return
 }
 
 func waitReceive(
-	ctx context.Context, a *wallet.Account,
+	ctx context.Context, ws *wsMux, a *wallet.Account,
 	account string, amount *big.Int, timeout time.Duration,
 ) (hash rpc.BlockHash, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	var (
-		rpcClient = rpc.Client{URL: *rpcURL, Ctx: ctx}
-		wsClient  = websocket.Client{URL: *wsURL, Ctx: ctx}
-	)
-	if err = wsClient.Connect(); err != nil {
+	msg, err := ws.connect(a.Address())
+	if err != nil {
 		return
 	}
-	defer wsClient.Close()
+	defer ws.disconnect(a.Address())
 	if err = a.ReceivePendings(); err != nil {
 		return
 	}
-	if ai, err := rpcClient.AccountInfo(a.Address()); err == nil {
+	client := rpc.Client{URL: *rpcURL, Ctx: ctx}
+	if ai, err := client.AccountInfo(a.Address()); err == nil {
 		if excess := new(big.Int).Sub(&ai.Balance.Int, amount); excess.Sign() >= 0 {
 			if excess.Sign() > 0 {
 				for hash := ai.Frontier; ; {
-					bi, err := rpcClient.BlockInfo(hash)
+					bi, err := client.BlockInfo(hash)
 					if err != nil {
 						return nil, err
 					}
 					if bi.Subtype == "receive" {
-						if bi, err = rpcClient.BlockInfo(bi.Contents.Link); err != nil {
+						if bi, err = client.BlockInfo(bi.Contents.Link); err != nil {
 							return nil, err
 						}
 						if _, err = a.Send(bi.BlockAccount, excess); err != nil {
@@ -134,7 +105,7 @@ func waitReceive(
 	}
 	for {
 		select {
-		case m := <-wsClient.Messages:
+		case m := <-msg:
 			switch m := m.(type) {
 			case *websocket.Confirmation:
 				switch a.Address() {
@@ -145,7 +116,7 @@ func waitReceive(
 				case m.Block.Account:
 					if excess := new(big.Int).Sub(&m.Block.Balance.Int, amount); excess.Sign() >= 0 {
 						if excess.Sign() > 0 {
-							bi, err := rpcClient.BlockInfo(m.Block.Link)
+							bi, err := client.BlockInfo(m.Block.Link)
 							if err != nil {
 								return nil, err
 							}

@@ -26,8 +26,9 @@ func main() {
 		log.Fatal(err)
 	}
 	go scavenger(w)
+	ws := newWSMux(*wsURL)
 	http.HandleFunc("/payment/new", newPaymentHandler(w))
-	http.HandleFunc("/payment/wait", waitPaymentHandler(w))
+	http.HandleFunc("/payment/wait", waitPaymentHandler(w, ws))
 	http.HandleFunc("/payment/cancel", cancelPaymentHandler(w))
 	http.HandleFunc("/payment/pay", handoffPaymentHandler)
 	http.HandleFunc("/payment/status", statusPaymentHandler)
