@@ -17,14 +17,14 @@ import (
 
 func validateBlock(block *rpc.Block, account string, amount *big.Int) (hash rpc.BlockHash, err error) {
 	if block.Type != "state" {
-		return nil, errors.New("Invalid block type")
+		return nil, errors.New("invalid block type")
 	}
 	destAccount, err := util.PubkeyToAddress(block.Link)
 	if err != nil {
 		return
 	}
 	if destAccount != account {
-		return nil, errors.New("Incorrect destination account")
+		return nil, errors.New("incorrect destination account")
 	}
 	client := rpc.Client{URL: *rpcURL}
 	ai, err := client.AccountInfo(block.Account)
@@ -32,14 +32,14 @@ func validateBlock(block *rpc.Block, account string, amount *big.Int) (hash rpc.
 		return
 	}
 	if !bytes.Equal(block.Previous, ai.Frontier) {
-		return nil, errors.New("Previous block is not frontier")
+		return nil, errors.New("previous block is not frontier")
 	}
 	if block.Balance.Cmp(&ai.Balance.Int) >= 0 {
-		return nil, errors.New("Invalid block balance for send")
+		return nil, errors.New("invalid block balance for send")
 	}
 	sendAmount := new(big.Int).Sub(&ai.Balance.Int, &block.Balance.Int)
 	if sendAmount.Cmp(amount) != 0 {
-		return nil, errors.New("Incorrect payment amount")
+		return nil, errors.New("incorrect payment amount")
 	}
 	pubkey, err := util.AddressToPubkey(block.Account)
 	if err != nil {
@@ -49,7 +49,7 @@ func validateBlock(block *rpc.Block, account string, amount *big.Int) (hash rpc.
 		return
 	}
 	if !ed25519.Verify(pubkey, hash, block.Signature) {
-		return nil, errors.New("Invalid signature")
+		return nil, errors.New("invalid signature")
 	}
 	return
 }

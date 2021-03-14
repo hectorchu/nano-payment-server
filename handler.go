@@ -34,7 +34,7 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			return
 		}
 		if v.Account == "" {
-			badRequest(w, errors.New("Missing account"))
+			badRequest(w, errors.New("missing account"))
 			return
 		}
 		if _, err := util.AddressToPubkey(v.Account); err != nil {
@@ -42,7 +42,7 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			return
 		}
 		if v.Amount == "" {
-			badRequest(w, errors.New("Missing amount"))
+			badRequest(w, errors.New("missing amount"))
 			return
 		}
 		amount, err := util.NanoAmountFromString(v.Amount)
@@ -51,7 +51,7 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			return
 		}
 		if amount.Raw.Sign() <= 0 {
-			badRequest(w, errors.New("Amount must be positive"))
+			badRequest(w, errors.New("amount must be positive"))
 			return
 		}
 		payment, err := newPaymentRequest(v.Account, amount.Raw)
@@ -105,7 +105,7 @@ func waitPaymentHandler(wallet *Wallet, ws *wsMux) http.HandlerFunc {
 			return
 		}
 		if v.ID == "" {
-			badRequest(w, errors.New("Missing payment id"))
+			badRequest(w, errors.New("missing payment id"))
 			return
 		}
 		paymentMutex.lock(v.ID)
@@ -115,7 +115,7 @@ func waitPaymentHandler(wallet *Wallet, ws *wsMux) http.HandlerFunc {
 		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
-			badRequest(w, errors.New("Invalid payment id"))
+			badRequest(w, errors.New("invalid payment id"))
 			return
 		} else if err != nil {
 			serverError(w, err)
@@ -174,7 +174,7 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			return
 		}
 		if v.ID == "" {
-			badRequest(w, errors.New("Missing payment id"))
+			badRequest(w, errors.New("missing payment id"))
 			return
 		}
 		paymentMutex.lock(v.ID)
@@ -184,14 +184,14 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 		}
 		payment, err := getPaymentRequest(v.ID)
 		if err == sql.ErrNoRows {
-			badRequest(w, errors.New("Invalid payment id"))
+			badRequest(w, errors.New("invalid payment id"))
 			return
 		} else if err != nil {
 			serverError(w, err)
 			return
 		}
 		if payment.hash != nil {
-			badRequest(w, errors.New("Payment already fulfilled"))
+			badRequest(w, errors.New("payment already fulfilled"))
 			return
 		}
 		if err = cancel(wallet, payment.id); err != nil {
@@ -208,7 +208,7 @@ func cancelPaymentHandler(wallet *Wallet) http.HandlerFunc {
 func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.URL.Query()["id"]
 	if !ok {
-		badRequest(w, errors.New("Missing payment id"))
+		badRequest(w, errors.New("missing payment id"))
 		return
 	}
 	paymentMutex.lock(id[0])
@@ -218,7 +218,7 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	payment, err := getPaymentRequest(id[0])
 	if err == sql.ErrNoRows {
-		badRequest(w, errors.New("Invalid payment id"))
+		badRequest(w, errors.New("invalid payment id"))
 		return
 	} else if err != nil {
 		serverError(w, err)
@@ -227,7 +227,7 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 	var block rpc.Block
 	if err = json.NewDecoder(r.Body).Decode(&block); err != nil {
 		if err == io.EOF {
-			err = errors.New("Please paste this URL into a wallet which supports payment URLs")
+			err = errors.New("please paste this URL into a wallet which supports payment URLs")
 		}
 		badRequest(w, err)
 		return
@@ -238,7 +238,7 @@ func handoffPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if payment.hash != nil && !bytes.Equal(hash, payment.hash) {
-		badRequest(w, errors.New("Block for this payment id has already been submitted"))
+		badRequest(w, errors.New("block for this payment id has already been submitted"))
 		return
 	}
 	if err = updatePaymentRequest(payment.id, hash); err != nil {
@@ -282,12 +282,12 @@ func statusPaymentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if v.ID == "" {
-		badRequest(w, errors.New("Missing payment id"))
+		badRequest(w, errors.New("missing payment id"))
 		return
 	}
 	payment, err := getPaymentRequest(v.ID)
 	if err == sql.ErrNoRows {
-		badRequest(w, errors.New("Invalid payment id"))
+		badRequest(w, errors.New("invalid payment id"))
 		return
 	} else if err != nil {
 		serverError(w, err)

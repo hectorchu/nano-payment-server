@@ -100,7 +100,7 @@ func getPaymentRequest(id string) (payment *paymentRecord, err error) {
 		}
 		var ok bool
 		if payment.amount.Raw, ok = new(big.Int).SetString(amount, 10); !ok {
-			return errors.New("Could not decode amount")
+			return errors.New("could not decode amount")
 		}
 		if hash != "" {
 			if payment.hash, err = hex.DecodeString(hash); err != nil {
