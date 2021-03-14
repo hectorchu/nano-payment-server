@@ -76,8 +76,15 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 				return
 			}
 			if err != nil || ai.BlockCount == ai.ConfirmationHeight {
-				v.Account = a.Address()
-				break
+				balance, pending, err := a.Balance()
+				if err != nil {
+					serverError(w, err)
+					return
+				}
+				if balance.Sign() == 0 && pending.Sign() == 0 {
+					v.Account = a.Address()
+					break
+				}
 			}
 			if err = freeWalletIndex(payment.id); err != nil {
 				serverError(w, err)
