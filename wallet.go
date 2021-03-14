@@ -52,10 +52,10 @@ func loadWallet() (w *Wallet, err error) {
 	return
 }
 
-func getFreeWalletIndex(id string) (index uint32, err error) {
+func getFreeWalletIndex(id string, min uint32) (index uint32, err error) {
 	now := time.Now().Unix()
 	err = withDB(func(tx *sql.Tx) (err error) {
-		if tx.QueryRow(`SELECT rowid FROM wallet WHERE id = "" LIMIT 1`).Scan(&index) == nil {
+		if tx.QueryRow(`SELECT rowid FROM wallet WHERE id = "" AND rowid > ? LIMIT 1`, min).Scan(&index) == nil {
 			_, err = tx.Exec("UPDATE wallet SET id = ?, time = ? WHERE rowid = ?", id, now, index)
 			return
 		}

@@ -59,19 +59,34 @@ func newPaymentHandler(wallet *Wallet) http.HandlerFunc {
 			serverError(w, err)
 			return
 		}
-		index, err := getFreeWalletIndex(payment.id)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		a, err := wallet.getAccount(index)
-		if err != nil {
-			serverError(w, err)
-			return
+		for index := uint32(0); ; {
+			if index, err = getFreeWalletIndex(payment.id, index); err != nil {
+				serverError(w, err)
+				return
+			}
+			a, err := wallet.getAccount(index)
+			if err != nil {
+				serverError(w, err)
+				return
+			}
+			client := rpc.Client{URL: *rpcURL}
+			ai, err := client.AccountInfo(a.Address())
+			if err != nil && err.Error() != "Account not found" {
+				serverError(w, err)
+				return
+			}
+			if err != nil || ai.BlockCount == ai.ConfirmationHeight {
+				v.Account = a.Address()
+				break
+			}
+			if err = freeWalletIndex(payment.id); err != nil {
+				serverError(w, err)
+				return
+			}
 		}
 		if err = json.NewEncoder(w).Encode(map[string]string{
 			"id":      payment.id,
-			"account": a.Address(),
+			"account": v.Account,
 		}); err != nil {
 			serverError(w, err)
 			return
