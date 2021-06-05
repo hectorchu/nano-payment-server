@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"math/big"
 	"time"
@@ -173,13 +174,9 @@ func refund(a *wallet.Account) (err error) {
 }
 
 func generatePoW(block *rpc.Block) (err error) {
-	client := rpc.Client{URL: *rpcURL}
-	_, difficulty, _, _, _, _, err := client.ActiveDifficulty()
-	if err != nil {
-		return
-	}
+	difficulty, _ := hex.DecodeString("fffffff800000000")
 	if *powURL != "" {
-		client.URL = *powURL
+		client := rpc.Client{URL: *powURL}
 		block.Work, _, _, err = client.WorkGenerate(block.Previous, difficulty)
 	} else {
 		block.Work, err = pow.Generate(block.Previous, difficulty)
